@@ -65,4 +65,17 @@ H5_DLL size_t  H5HG_get_free_size(const H5HG_heap_t *h);
 /* Debugging functions */
 H5_DLL herr_t H5HG_debug(H5F_t *f, haddr_t addr, FILE *stream, int indent, int fwidth);
 
+/* Main local heap routines */
+H5_DLL herr_t       H5HG__insert_local(H5F_t *f, H5HG_heap_t **heap_ptr, size_t size, const void *obj, size_t *idx_out);
+H5_DLL void        *H5HG__read_local(H5F_t *f, const H5HG_heap_t *heap, size_t idx, void *object, size_t *buf_size);
+H5_DLL herr_t       H5HG__remove_local(H5F_t *f, H5HG_heap_t *heap, size_t idx, hbool_t *heap_empty);
+H5_DLL herr_t       H5HG__extend_local(H5F_t *f, H5HG_heap_t *heap, size_t need);
+H5_DLL htri_t       H5HG__is_empty_local(const H5HG_heap_t *heap);
+H5_DLL herr_t       H5HG__get_obj_size_local(H5F_t *f, const H5HG_heap_t *heap, size_t idx, size_t *obj_size);
+H5_DLL herr_t       H5HG__free_local(H5HG_heap_t *heap);
+
+/* Chunk-local heap image encoding/decoding */
+H5_DLL herr_t       H5HG__encode_local(const H5HG_heap_t *heap, uint8_t **image_out, size_t *image_len_out);
+H5_DLL H5HG_heap_t *H5HG__decode_local(H5F_t *f, const void *image, size_t len);
+
 #endif /* H5HGprivate_H */
