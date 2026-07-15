@@ -44,8 +44,8 @@
         }       /* end if */                                                                                 \
     } while (0) /* end GHEAP_REPEATED_ERR */
 
-static const char *FILENAME[] = {"gheap1", "gheap2", "gheap3", "gheap4", "gheapooo",
-                                 "lheap1", "lheap2", "lheap3", "lheap4", "lheapooo", "lheapencdec", NULL};
+static const char *FILENAME[] = {"gheap1", "gheap2", "gheap3", "gheap4",   "gheapooo",    "lheap1",
+                                 "lheap2", "lheap3", "lheap4", "lheapooo", "lheapencdec", NULL};
 
 /*-------------------------------------------------------------------------
  * Function:    test_1
@@ -555,7 +555,7 @@ error:
  * Purpose:     Inserts objects whose sizes increase monotonically into one
  *              chunk-local heap and verifies that all payloads remain intact
  *              after repeated local-heap extensions.
- * 
+ *
  *                                           -- AZO   7/09/26
  *-------------------------------------------------------------------------
  */
@@ -658,7 +658,7 @@ error:
  *
  * Purpose:     Inserts objects whose sizes decrease monotonically into one
  *              chunk-local heap and verifies every payload.
- * 
+ *
  *                                        -- AZO   7/09/26
  *-------------------------------------------------------------------------
  */
@@ -754,24 +754,24 @@ error:
  * Purpose:     Removes every payload from a chunk-local heap and confirms
  *              that no live object remains. The heap itself is explicitly
  *              freed because its lifetime belongs to the structured chunk.
- * 
+ *
  *                                          -- AZO   7/10/26
  *-------------------------------------------------------------------------
  */
 static int
 test_3_local(hid_t fapl)
 {
-    hid_t        file       = H5I_INVALID_HID; /* Test file identifier */
-    H5F_t       *f          = NULL;            /* Internal file object */
-    H5HG_heap_t *heap       = NULL;            /* Chunk-local heap under test */
-    size_t      *obj_idx    = NULL;            /* Local object indices */
-    uint8_t      out[GHEAP_TEST_NOBJS];        /* Object contents */
-    size_t       u;                            /* Object index */
-    size_t       size;                         /* Current payload size */
-    hbool_t      heap_empty = false;           /* Removal empty-state result */
-    htri_t       is_empty;                     /* Independent empty check */
-    int          nerrors = 0;                  /* Number of failures */
-    char         filename[1024];               /* Test file name */
+    hid_t        file    = H5I_INVALID_HID; /* Test file identifier */
+    H5F_t       *f       = NULL;            /* Internal file object */
+    H5HG_heap_t *heap    = NULL;            /* Chunk-local heap under test */
+    size_t      *obj_idx = NULL;            /* Local object indices */
+    uint8_t      out[GHEAP_TEST_NOBJS];     /* Object contents */
+    size_t       u;                         /* Object index */
+    size_t       size;                      /* Current payload size */
+    hbool_t      heap_empty = false;        /* Removal empty-state result */
+    htri_t       is_empty;                  /* Independent empty check */
+    int          nerrors = 0;               /* Number of failures */
+    char         filename[1024];            /* Test file name */
 
     TESTING("complete chunk-local heap object removal");
 
@@ -862,27 +862,27 @@ error:
  * Purpose:     Interleaves insertion and removal to exercise repeated local
  *              heap compaction. Surviving objects are verified before they
  *              are removed, and the heap must be empty at the end.
- * 
- * 
+ *
+ *
  *                                                -- AZO   7/14/26
  *-------------------------------------------------------------------------
  */
 static int
 test_4_local(hid_t fapl)
 {
-    hid_t        file       = H5I_INVALID_HID; /* Test file identifier */
-    H5F_t       *f          = NULL;            /* Internal file object */
-    H5HG_heap_t *heap       = NULL;            /* Chunk-local heap under test */
-    size_t      *obj_idx    = NULL;            /* Local object indices */
-    bool        *live       = NULL;            /* Whether each object is live */
-    uint8_t      out[GHEAP_TEST_NOBJS];        /* Expected object contents */
-    uint8_t      in[GHEAP_TEST_NOBJS];         /* Read-back buffer */
-    size_t       u;                            /* Object index */
-    size_t       size;                         /* Current payload size */
-    hbool_t      heap_empty = false;           /* Final removal result */
-    htri_t       is_empty;                     /* Independent empty check */
-    int          nerrors = 0;                  /* Number of failures */
-    char         filename[1024];               /* Test file name */
+    hid_t        file    = H5I_INVALID_HID; /* Test file identifier */
+    H5F_t       *f       = NULL;            /* Internal file object */
+    H5HG_heap_t *heap    = NULL;            /* Chunk-local heap under test */
+    size_t      *obj_idx = NULL;            /* Local object indices */
+    bool        *live    = NULL;            /* Whether each object is live */
+    uint8_t      out[GHEAP_TEST_NOBJS];     /* Expected object contents */
+    uint8_t      in[GHEAP_TEST_NOBJS];      /* Read-back buffer */
+    size_t       u;                         /* Object index */
+    size_t       size;                      /* Current payload size */
+    hbool_t      heap_empty = false;        /* Final removal result */
+    htri_t       is_empty;                  /* Independent empty check */
+    int          nerrors = 0;               /* Number of failures */
+    char         filename[1024];            /* Test file name */
 
     TESTING("partial chunk-local heap object removal");
 
@@ -1013,7 +1013,7 @@ error:
  * Purpose:     Forces the 16-bit local object index to wrap and reuse cleared
  *              entries. The heap is then encoded and decoded to verify that
  *              out-of-order indices survive the image round trip.
- * 
+ *
  *                                          -- AZO   7/14/26
  *-------------------------------------------------------------------------
  */
@@ -1072,9 +1072,9 @@ test_ooo_indices_local(hid_t fapl)
     assert(obj_idx[535] == 1);
 
     /*
-    * Export the complete local heap image without accessing the opaque
-    * H5HG_heap_t representation directly.
-    */
+     * Export the complete local heap image without accessing the opaque
+     * H5HG_heap_t representation directly.
+     */
     if (H5HG__encode_local(heap, &image, &image_len) < 0)
         goto error;
 
@@ -1187,16 +1187,12 @@ error:
 static int
 test_encode_decode_local(hid_t fapl)
 {
-    /* 
-     * Initial payloads stored in the local heap. The second payload is 
+    /*
+     * Initial payloads stored in the local heap. The second payload is
      * deliberately removed before encoding
      */
-    static const char *values[] = {
-        "first local payload",
-        "payload removed before encoding",
-        "third payload is deliberately longer than the first",
-        "fourth"
-    };
+    static const char *values[] = {"first local payload", "payload removed before encoding",
+                                   "third payload is deliberately longer than the first", "fourth"};
 
     hid_t        file        = H5I_INVALID_HID; /* Test file identifier */
     H5F_t       *f           = NULL;            /* Internal file object */
@@ -1211,24 +1207,24 @@ test_encode_decode_local(hid_t fapl)
     size_t       image_len_2 = 0;               /* Second image size */
     char         read_buf[128];                 /* Payload read-back buffer */
     const char  *new_value = "inserted after decode";
-    size_t       u;                             /* Value index */
-    bool         removed_reappeared = false;    /* Removed-object check */
-    int          nerrors = 0;                   /* Number of failures */
-    char         filename[1024];                /* Test file name */
+    size_t       u;                          /* Value index */
+    bool         removed_reappeared = false; /* Removed-object check */
+    int          nerrors            = 0;     /* Number of failures */
+    char         filename[1024];             /* Test file name */
 
     TESTING("chunk-local heap encode/decode round trip");
 
-    /* 
+    /*
      * Create a file so the local H5HG routines can use the file's configured
      * encoded length width. The local heap itself is not written as a normal
      * file-backed global heap.
      */
     h5_fixname(FILENAME[0], fapl, filename, sizeof filename);
 
-    if ( (file = H5Fcreate(filename, H5F_ACC_TRUNC, H5P_DEFAULT, fapl)) < 0 )
+    if ((file = H5Fcreate(filename, H5F_ACC_TRUNC, H5P_DEFAULT, fapl)) < 0)
         goto error;
 
-    if ( NULL == (f = (H5F_t *)H5VL_object(file)) ) {
+    if (NULL == (f = (H5F_t *)H5VL_object(file))) {
         H5_FAILED();
         puts("    Unable to obtain internal file object");
         goto error;
@@ -1236,7 +1232,7 @@ test_encode_decode_local(hid_t fapl)
 
     /*
      * Build the original local heap. Each returned index is retained because the same
-     * index must identify the same surviving payload after decode. 
+     * index must identify the same surviving payload after decode.
      */
     for (u = 0; u < 4; u++) {
         H5Eclear2(H5E_DEFAULT);
@@ -1249,7 +1245,7 @@ test_encode_decode_local(hid_t fapl)
     }
 
     /*
-     * Remove the second object before encoding. This creates a cleared 
+     * Remove the second object before encoding. This creates a cleared
      * object-table slot and tests whether the serialized image preserves
      * the distinction between live and removed indices.
      */
@@ -1260,9 +1256,9 @@ test_encode_decode_local(hid_t fapl)
         goto error;
     }
 
-    /* 
+    /*
      * Export the complete serialized H5HG collection image. The encoder
-     * allocates IMAGE and retuns its exact IMAGE_LEN. 
+     * allocates IMAGE and retuns its exact IMAGE_LEN.
      */
     if (H5HG__encode_local(heap, &image, &image_len) < 0) {
         H5_FAILED();
@@ -1285,7 +1281,7 @@ test_encode_decode_local(hid_t fapl)
         goto error;
     }
 
-    /* 
+    /*
      * Verify all objects that were live when the heap was encoded.
      * Their original local indices and logical payload contents
      * must be preserved.
@@ -1309,7 +1305,7 @@ test_encode_decode_local(hid_t fapl)
         }
     }
 
-    /* 
+    /*
      * Reading the removed index should fail. Supress the expected HDF5 error
      * stack while checking that the decoder did not recreate a cleared
      * object-table entry.
@@ -1317,21 +1313,20 @@ test_encode_decode_local(hid_t fapl)
     H5E_BEGIN_TRY
     {
         memset(read_buf, 0, sizeof(read_buf));
-        removed_reappeared =
-            (NULL != H5HG__read_local(f, decoded, obj_idx[1], read_buf, NULL));
+        removed_reappeared = (NULL != H5HG__read_local(f, decoded, obj_idx[1], read_buf, NULL));
     }
     H5E_END_TRY
 
-    if ( removed_reappeared ) {
+    if (removed_reappeared) {
         H5_FAILED();
         puts("    Removed local heap object reappeared after decode");
         nerrors++;
     }
 
     /*
-     * A correctly decoded heap must support normal mutation. Insert a new 
+     * A correctly decoded heap must support normal mutation. Insert a new
      * payload to verify that the decoder restored the free-space record,
-     * object-table allocation, next-index state, and internal pointers. 
+     * object-table allocation, next-index state, and internal pointers.
      */
     if (H5HG__insert_local(f, &decoded, strlen(new_value) + 1, new_value, &new_idx) < 0) {
         H5_FAILED();
@@ -1354,7 +1349,7 @@ test_encode_decode_local(hid_t fapl)
         nerrors++;
     }
 
-    /* 
+    /*
      * Serialize the modified decoded heap. This verifies that a heap
      * created by H5HG__decode_local() remains compatible with the
      * normal local encode path after subsequent mutation.
@@ -1368,7 +1363,7 @@ test_encode_decode_local(hid_t fapl)
 
     /*
      * Destroy the first decoded heap so the second decode must once again
-     * reconstruct all in-memory state solely from the serialized image. 
+     * reconstruct all in-memory state solely from the serialized image.
      */
     if (H5HG__free_local(decoded) < 0)
         goto error;
@@ -1382,7 +1377,7 @@ test_encode_decode_local(hid_t fapl)
         goto error;
     }
 
-    /* 
+    /*
      * Confirm that the payload inserted after the first decode survived the second
      * encode/decode cycle at the same local index.
      */
@@ -1421,15 +1416,15 @@ test_encode_decode_local(hid_t fapl)
 
 error:
     /*
-     * Release whichever heap representations were successfully created 
-     * before the faulure. 
+     * Release whichever heap representations were successfully created
+     * before the faulure.
      */
     if (heap)
         H5HG__free_local(heap);
 
     if (decoded)
         H5HG__free_local(decoded);
-        
+
     if (decoded_2)
         H5HG__free_local(decoded_2);
 

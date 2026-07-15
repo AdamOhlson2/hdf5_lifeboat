@@ -874,7 +874,7 @@ done:
  *
  * Return:      SUCCEED/FAIL
  *
- *                                          --AZO    07/12/26 
+ *                                          --AZO    07/12/26
  *-------------------------------------------------------------------------
  */
 herr_t
@@ -888,17 +888,17 @@ H5HG__free_local(H5HG_heap_t *heap)
     assert(heap);
 
     /* Release the serialized H5HG collection image owned by this local heap. */
-    if ( heap->chunk )
+    if (heap->chunk)
         heap->chunk = H5FL_BLK_FREE(gheap_chunk, heap->chunk);
 
-    /* 
+    /*
      * Release the in-memory object table used to map local indices to records
      * within the serialized heap image
      */
-    if ( heap->obj )
+    if (heap->obj)
         heap->obj = H5FL_SEQ_FREE(H5HG_obj_t, heap->obj);
 
-    /* 
+    /*
      * Release the heap descriptor itself. No CWFS removal is required because
      * local heaps are never registered with the file-wide global heap machinery.
      */
@@ -917,18 +917,18 @@ done:
  *              Unlike H5HG__create(), this routine does not allocate
  *              a standalone global-heap collection in the file, assign
  *              a file address, add the heap to the CWFS list, or insert
- *              it into the metadata cache. The returned heap is owned 
- *              by the decoded structured chunk and will later be 
+ *              it into the metadata cache. The returned heap is owned
+ *              by the decoded structured chunk and will later be
  *              serialized into H5_SECTION_VL.
- * 
+ *
  *              The heap image uses the existing H5HG collection layout.
- *              Object-table index zero is initialized as the free-space 
- *              record, and indices beginning at one are available for 
+ *              Object-table index zero is initialized as the free-space
+ *              record, and indices beginning at one are available for
  *              payload objects.
  *
  * Return:      Success: Pointer to the created local heap
  *              Failure: NULL
- * 
+ *
  *                                                  -- AZO  6/26/26
  *-------------------------------------------------------------------------
  */
@@ -947,11 +947,11 @@ H5HG__create_local(H5F_t *f, size_t init_size)
     /* Check args */
     assert(f);
 
-    /* 
-     * Use the normal min H5HG collection size so the local heap has 
+    /*
+     * Use the normal min H5HG collection size so the local heap has
      * enough room for its header, free-space record, and initial objects.
      */
-    if ( ( size < H5HG_MINSIZE ) )
+    if ((size < H5HG_MINSIZE))
         size = H5HG_MINSIZE;
 
     /*
@@ -959,21 +959,18 @@ H5HG__create_local(H5F_t *f, size_t init_size)
      * A wrapped alignment result would be smaller than the requested size.
      */
     aligned_size = H5HG_ALIGN(size);
-    if ( ( aligned_size < size ) )
-        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, NULL,
-                    "chunk-local heap initial size overflow");
+    if ((aligned_size < size))
+        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, NULL, "chunk-local heap initial size overflow");
 
     size = aligned_size;
 
     /* The heap must be large enough to contain its collection header. */
-    if ( ( size < H5HG_SIZEOF_HDR(f) ) )
-        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, NULL,
-                    "chunk-local heap size is smaller than its header");
+    if ((size < H5HG_SIZEOF_HDR(f)))
+        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, NULL, "chunk-local heap size is smaller than its header");
 
     /* Allocate and initialize the in-memory heap descriptor. */
-    if ( ( NULL == (heap = H5FL_CALLOC(H5HG_heap_t)) ) )
-        HGOTO_ERROR(H5E_RESOURCE, H5E_NOSPACE, NULL,
-                    "memory allocation failed");
+    if ((NULL == (heap = H5FL_CALLOC(H5HG_heap_t))))
+        HGOTO_ERROR(H5E_RESOURCE, H5E_NOSPACE, NULL, "memory allocation failed");
 
     heap->addr = HADDR_UNDEF;
     heap->size = size;
@@ -986,36 +983,32 @@ H5HG__create_local(H5F_t *f, size_t init_size)
     heap->shared = H5F_SHARED(f);
 
     /* Allocate and clear the serialized H5HG collection image. */
-    if ( ( NULL == (heap->chunk = H5FL_BLK_MALLOC(gheap_chunk, size)) ) )
-        HGOTO_ERROR(H5E_RESOURCE, H5E_NOSPACE, NULL,
-                    "memory allocation failed");
+    if ((NULL == (heap->chunk = H5FL_BLK_MALLOC(gheap_chunk, size))))
+        HGOTO_ERROR(H5E_RESOURCE, H5E_NOSPACE, NULL, "memory allocation failed");
 
     memset(heap->chunk, 0, size);
 
-    /* 
-     * Allocate the in-memory object table. Entry zero is reserved for the 
-     * free-space record; payload objects begin at index one. 
+    /*
+     * Allocate the in-memory object table. Entry zero is reserved for the
+     * free-space record; payload objects begin at index one.
      */
     heap->nalloc = H5HG_NOBJS(f, size);
     heap->nused  = 1; /* Index zero is the free-space object */
 
-    if ( ( 0 == heap->nalloc ) )
-        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, NULL,
-                    "invalid local heap object-table size");
+    if ((0 == heap->nalloc))
+        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, NULL, "invalid local heap object-table size");
 
-    if ( ( heap->nalloc > (SIZE_MAX / sizeof(heap->obj[0])) ) )
-        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, NULL,
-                    "local heap object-table size overflow");
+    if ((heap->nalloc > (SIZE_MAX / sizeof(heap->obj[0]))))
+        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, NULL, "local heap object-table size overflow");
 
-    if ( ( NULL == (heap->obj = H5FL_SEQ_MALLOC(H5HG_obj_t, heap->nalloc)) ) )
-        HGOTO_ERROR(H5E_RESOURCE, H5E_NOSPACE, NULL,
-                    "memory allocation failed");
+    if ((NULL == (heap->obj = H5FL_SEQ_MALLOC(H5HG_obj_t, heap->nalloc))))
+        HGOTO_ERROR(H5E_RESOURCE, H5E_NOSPACE, NULL, "memory allocation failed");
 
     memset(heap->obj, 0, heap->nalloc * sizeof(heap->obj[0]));
 
-    /* 
-     * Initialize the collection header: 
-     * (signature, version, three reserved bytes, encoded collection size) 
+    /*
+     * Initialize the collection header:
+     * (signature, version, three reserved bytes, encoded collection size)
      */
     H5MM_memcpy(heap->chunk, H5HG_MAGIC, (size_t)H5_SIZEOF_MAGIC);
 
@@ -1031,8 +1024,7 @@ H5HG__create_local(H5F_t *f, size_t init_size)
      * Align the beginning of object zero in the same way as a normal H5HG
      * collection.
      */
-    pad_size = (size_t)H5HG_ALIGN(p - heap->chunk) -
-        (size_t)(p - heap->chunk);
+    pad_size = (size_t)H5HG_ALIGN(p - heap->chunk) - (size_t)(p - heap->chunk);
     p += pad_size;
 
     /* Initialize object zero as the free-space object */
@@ -1052,10 +1044,9 @@ H5HG__create_local(H5F_t *f, size_t init_size)
 
 done:
     /* Destroy any partially initialized heap if creation fails.  */
-    if ( ( NULL == ret_value && heap ) )
-        if ( ( H5HG__free_local(heap) < 0 ) )
-            HDONE_ERROR(H5E_HEAP, H5E_CANTFREE, NULL,
-                        "unable to destroy local heap");
+    if ((NULL == ret_value && heap))
+        if ((H5HG__free_local(heap) < 0))
+            HDONE_ERROR(H5E_HEAP, H5E_CANTFREE, NULL, "unable to destroy local heap");
 
     FUNC_LEAVE_NOAPI(ret_value)
 } /* end H5HG__create_local() */
@@ -1071,32 +1062,32 @@ done:
  *              locate or protect a standalone global-heap collection,
  *              resize a metadata-cache entry, or perform any file-space
  *              or CWFS operation.
- * 
+ *
  *              Existing object-table pointers are preserved across the
- *              buffer reallocation, the encoded heap size is updated, 
- *              and the newly appended bytes are added to object zero, 
+ *              buffer reallocation, the encoded heap size is updated,
+ *              and the newly appended bytes are added to object zero,
  *              which represents the heap's free-space extent.
- * 
- *              NEED is the minimum additional free space required, not 
- *              the final heap size. A value of zero is accepted as a 
+ *
+ *              NEED is the minimum additional free space required, not
+ *              the final heap size. A value of zero is accepted as a
  *              successful no-op.
  *
  * Return:      SUCCEED/FAIL
- * 
+ *
  *                                                  -- AZO   7/08/26
  *-------------------------------------------------------------------------
  */
 herr_t
 H5HG__extend_local(H5F_t *f, H5HG_heap_t *heap, size_t need)
 {
-    size_t   *obj_offsets = NULL;    /* Object offsets */
-    size_t    old_size    = 0;       /* Old size of the heap's chunk */
-    size_t    ext_size    = 0;       /* Extension size */
-    size_t    new_size    = 0;       /* New size of the heap's chunk */
-    uint8_t  *new_chunk   = NULL;    /* Pointer to new chunk information */
-    uint8_t  *p           = NULL;    /* Pointer to raw heap info */
-    unsigned  u;                     /* Local index variable */
-    herr_t    ret_value   = SUCCEED; /* Return value */
+    size_t  *obj_offsets = NULL;  /* Object offsets */
+    size_t   old_size    = 0;     /* Old size of the heap's chunk */
+    size_t   ext_size    = 0;     /* Extension size */
+    size_t   new_size    = 0;     /* New size of the heap's chunk */
+    uint8_t *new_chunk   = NULL;  /* Pointer to new chunk information */
+    uint8_t *p           = NULL;  /* Pointer to raw heap info */
+    unsigned u;                   /* Local index variable */
+    herr_t   ret_value = SUCCEED; /* Return value */
 
     FUNC_ENTER_PACKAGE
 
@@ -1107,7 +1098,7 @@ H5HG__extend_local(H5F_t *f, H5HG_heap_t *heap, size_t need)
     assert(heap->obj);
 
     /* Accept a zero-byte extension as a successful no-op */
-    if ( ( 0 == need ) )
+    if ((0 == need))
         HGOTO_DONE(SUCCEED);
 
     /*
@@ -1115,23 +1106,21 @@ H5HG__extend_local(H5F_t *f, H5HG_heap_t *heap, size_t need)
      * a result smaller than its input unless the calculation wrapped.
      */
     ext_size = H5HG_ALIGN(need);
-    if ( ( ext_size < need ) )
-        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL,
-                    "chunk-local heap extension size overflow");
+    if ((ext_size < need))
+        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL, "chunk-local heap extension size overflow");
 
     /*
      * Grow by at least H5HG_MINSIZE to avoid excessive reallocations for
      * repeated small inserts.
      */
-    if ( ( ext_size < H5HG_MINSIZE ) )
+    if ((ext_size < H5HG_MINSIZE))
         ext_size = H5HG_MINSIZE;
 
     old_size = heap->size;
 
     /* Validate all size calculation before modifying the heap. */
-    if ( ( ext_size > (SIZE_MAX - old_size) ) )
-        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL,
-                    "chunk-local heap size overflow");
+    if ((ext_size > (SIZE_MAX - old_size)))
+        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL, "chunk-local heap size overflow");
 
     new_size = old_size + ext_size;
 
@@ -1139,31 +1128,27 @@ H5HG__extend_local(H5F_t *f, H5HG_heap_t *heap, size_t need)
      * Save object offsets before reallocating because the old allocation
      * may be moved or released by the realloc operation.
      */
-    if ( ( heap->nused > (SIZE_MAX / sizeof(*obj_offsets)) ) )
-        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL,
-                    "chunk-local heap offset-table size overflow");
+    if ((heap->nused > (SIZE_MAX / sizeof(*obj_offsets))))
+        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL, "chunk-local heap offset-table size overflow");
 
-    if ( ( heap->nused > 0 ) ) {
-        if ( ( NULL == (obj_offsets = H5MM_malloc(heap->nused * sizeof(*obj_offsets))) ) )
-            HGOTO_ERROR(H5E_RESOURCE, H5E_NOSPACE, FAIL,
-                        "unable to allocate local heap offset table");
+    if ((heap->nused > 0)) {
+        if ((NULL == (obj_offsets = H5MM_malloc(heap->nused * sizeof(*obj_offsets)))))
+            HGOTO_ERROR(H5E_RESOURCE, H5E_NOSPACE, FAIL, "unable to allocate local heap offset table");
 
         for (u = 0; u < heap->nused; u++) {
             if (heap->obj[u].begin)
-                obj_offsets[u] =
-                    (size_t)(heap->obj[u].begin - heap->chunk);
+                obj_offsets[u] = (size_t)(heap->obj[u].begin - heap->chunk);
             else
                 obj_offsets[u] = SIZE_MAX;
         }
     } /* end if */
 
-    /* 
-     * Grow only the in-memory heap image. The local heap has no independent 
-     * file allocation or metadata-cache entry 
+    /*
+     * Grow only the in-memory heap image. The local heap has no independent
+     * file allocation or metadata-cache entry
      */
-    if ( ( NULL == (new_chunk = H5FL_BLK_REALLOC(gheap_chunk, heap->chunk, new_size)) ) )
-        HGOTO_ERROR(H5E_RESOURCE, H5E_NOSPACE, FAIL,
-                    "unable to extend chunk-local heap buffer");
+    if ((NULL == (new_chunk = H5FL_BLK_REALLOC(gheap_chunk, heap->chunk, new_size))))
+        HGOTO_ERROR(H5E_RESOURCE, H5E_NOSPACE, FAIL, "unable to extend chunk-local heap buffer");
 
     memset(new_chunk + old_size, 0, ext_size);
 
@@ -1190,8 +1175,7 @@ H5HG__extend_local(H5F_t *f, H5HG_heap_t *heap, size_t need)
         heap->obj[0].begin = heap->chunk + old_size;
 
     if (ext_size > SIZE_MAX - heap->obj[0].size)
-        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL,
-                    "chunk-local heap free-space size overflow");
+        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL, "chunk-local heap free-space size overflow");
 
     heap->obj[0].size += ext_size;
     heap->obj[0].nrefs = 0;
@@ -1221,42 +1205,41 @@ done:
  *
  *              Unlike H5HG_insert(), this routine operates on the heap
  *              owned by the current structured chunk. It does not search
- *              the file-wide global heap free-space list, allococate a 
+ *              the file-wide global heap free-space list, allococate a
  *              standalone heap collection in the file, or interact with
  *              the metadata cache.
- * 
- *              If *HEAP_PTR is NULL, a new local heap is created and 
- *              returned through HEAP_PTR. If the existing heap does 
+ *
+ *              If *HEAP_PTR is NULL, a new local heap is created and
+ *              returned through HEAP_PTR. If the existing heap does
  *              not contain enough free space, its in-memory image is
  *              extended.
- *  
+ *
  *              SIZE may be zero. OBJ must be non-NULL when SIZE is greater
  *              than zero. On success, IDX_OUT receives the object-table
  *              index used to identify the payload within this local heap.
- *          
+ *
  *              The local heap remains owned by the caller. The object
- *              index is valid only in combination with that heap and 
- *              does not identify a standalone global-heap collection 
+ *              index is valid only in combination with that heap and
+ *              does not identify a standalone global-heap collection
  *              in the file.
  *
  * Return:      SUCCEED/FAIL
- * 
- * 
+ *
+ *
  *                                                  -- AZO   07/12/26
  *-------------------------------------------------------------------------
  */
 herr_t
-H5HG__insert_local(H5F_t *f, H5HG_heap_t **heap_ptr, size_t size,
-                   const void *obj, size_t *idx_out)
+H5HG__insert_local(H5F_t *f, H5HG_heap_t **heap_ptr, size_t size, const void *obj, size_t *idx_out)
 {
-    H5HG_heap_t *heap         = NULL;               /* Pointer to the heap object */
+    H5HG_heap_t *heap         = NULL; /* Pointer to the heap object */
     size_t       aligned_size = 0;
-    size_t       initial_size;                  
-    size_t       need         = 0;                  /* Totl space needed for object */
+    size_t       initial_size;
+    size_t       need         = 0; /* Totl space needed for object */
     size_t       idx          = 0;
     unsigned     heap_flags   = H5AC__NO_FLAGS_SET;
     bool         heap_created = false;
-    herr_t       ret_value    = SUCCEED;            /* Return value */
+    herr_t       ret_value    = SUCCEED; /* Return value */
 
     FUNC_ENTER_PACKAGE
 
@@ -1272,13 +1255,11 @@ H5HG__insert_local(H5F_t *f, H5HG_heap_t **heap_ptr, size_t size,
     *idx_out = 0;
 
     aligned_size = H5HG_ALIGN(size);
-    if ( ( aligned_size < size ) )
-        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL,
-                    "chunk-local heap object size overflow");
+    if ((aligned_size < size))
+        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL, "chunk-local heap object size overflow");
 
-    if ( ( aligned_size > (SIZE_MAX - H5HG_SIZEOF_OBJHDR(f)) ) )
-        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL,
-                    "chunk-local heap object allocation size overflow");
+    if ((aligned_size > (SIZE_MAX - H5HG_SIZEOF_OBJHDR(f))))
+        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL, "chunk-local heap object allocation size overflow");
 
     /* Compute the complete serialized extent of the object with its header and aligned payload */
     need = H5HG_SIZEOF_OBJHDR(f) + aligned_size;
@@ -1286,21 +1267,19 @@ H5HG__insert_local(H5F_t *f, H5HG_heap_t **heap_ptr, size_t size,
     /*
      * Lazily create the heap for the first inserted object.
      */
-    if ( ( NULL == *heap_ptr ) ) {
+    if ((NULL == *heap_ptr)) {
 
-        if ( ( need > (SIZE_MAX - H5HG_SIZEOF_HDR(f)) ) )
-            HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL,
-                        "chunk-local heap initial allocation size overflow");
+        if ((need > (SIZE_MAX - H5HG_SIZEOF_HDR(f))))
+            HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL, "chunk-local heap initial allocation size overflow");
 
         initial_size = H5HG_SIZEOF_HDR(f) + need;
 
-        /* 
-         * Create the chunk's local heap on demand when the first payload is stored. 
-         * The new heap is installed directly into the decoded chunk state. 
+        /*
+         * Create the chunk's local heap on demand when the first payload is stored.
+         * The new heap is installed directly into the decoded chunk state.
          */
-        if ( ( NULL == (*heap_ptr = H5HG__create_local(f, initial_size)) ) )
-            HGOTO_ERROR(H5E_HEAP, H5E_CANTINIT, FAIL,
-                        "unable to create chunk-local heap");
+        if ((NULL == (*heap_ptr = H5HG__create_local(f, initial_size))))
+            HGOTO_ERROR(H5E_HEAP, H5E_CANTINIT, FAIL, "unable to create chunk-local heap");
 
         heap_created = true;
     }
@@ -1314,44 +1293,40 @@ H5HG__insert_local(H5F_t *f, H5HG_heap_t **heap_ptr, size_t size,
      * Check this before extending the byte buffer so a failed insertion
      * does not unnecessarily modify the heap.
      */
-    if ( ( heap->nused > H5HG_MAXIDX ) ) {
+    if ((heap->nused > H5HG_MAXIDX)) {
         size_t free_idx;
 
         for (free_idx = 1; free_idx < heap->nused; free_idx++)
-            if ( ( NULL == heap->obj[free_idx].begin ) )
+            if ((NULL == heap->obj[free_idx].begin))
                 break;
 
-        if ( ( free_idx >= heap->nused ) )
-            HGOTO_ERROR(H5E_HEAP, H5E_NOSPACE, FAIL,
-                        "chunk-local heap object index space is exhausted");
+        if ((free_idx >= heap->nused))
+            HGOTO_ERROR(H5E_HEAP, H5E_NOSPACE, FAIL, "chunk-local heap object index space is exhausted");
     }
 
-    if ( ( heap->obj[0].size < need ) ) {
+    if ((heap->obj[0].size < need)) {
 
-        /* 
-         * A local heap cannot move the object to another global collection, so 
-         * grow the current chunk-owned heap image when its free-space record 
+        /*
+         * A local heap cannot move the object to another global collection, so
+         * grow the current chunk-owned heap image when its free-space record
          * is too small.
          */
-        if ( ( H5HG__extend_local(f, heap, (need - heap->obj[0].size)) < 0 ) )
-            HGOTO_ERROR(H5E_HEAP, H5E_CANTALLOC, FAIL,
-                        "unable to extend chunk-local heap");
+        if ((H5HG__extend_local(f, heap, (need - heap->obj[0].size)) < 0))
+            HGOTO_ERROR(H5E_HEAP, H5E_CANTALLOC, FAIL, "unable to extend chunk-local heap");
     }
 
     /*
      * H5HG__alloc() marks normal cached heaps dirty. This local heap is not
      * a metadata-cache object, so heap_flags is intentionally ignored.
-     * 
-     * Reuse the existing H5HG allocator to assign an object index, write 
+     *
+     * Reuse the existing H5HG allocator to assign an object index, write
      * the serialized object header, and split object zero's free-space extent.
      */
-    if ( ( 0 == (idx = H5HG__alloc(f, heap, size, &heap_flags)) ) )
-        HGOTO_ERROR(H5E_HEAP, H5E_CANTALLOC, FAIL,
-                    "unable to allocate chunk-local heap object");
+    if ((0 == (idx = H5HG__alloc(f, heap, size, &heap_flags))))
+        HGOTO_ERROR(H5E_HEAP, H5E_CANTALLOC, FAIL, "unable to allocate chunk-local heap object");
 
-    if ( ( size > 0 ) )
-        H5MM_memcpy(heap->obj[idx].begin + H5HG_SIZEOF_OBJHDR(f),
-                    obj, size);
+    if ((size > 0))
+        H5MM_memcpy(heap->obj[idx].begin + H5HG_SIZEOF_OBJHDR(f), obj, size);
 
     *idx_out = idx;
 
@@ -1360,10 +1335,9 @@ done:
      * If this routine created the heap but failed to complete the first
      * insertion, restore the caller's heap pointer to NULL.
      */
-    if ( ( ( ret_value < 0 ) && ( heap_created ) && ( *heap_ptr ) ) ) {
-        if ( ( H5HG__free_local(*heap_ptr) < 0 ) )
-            HDONE_ERROR(H5E_HEAP, H5E_CANTFREE, FAIL,
-                        "unable to free newly created chunk-local heap");
+    if (((ret_value < 0) && (heap_created) && (*heap_ptr))) {
+        if ((H5HG__free_local(*heap_ptr) < 0))
+            HDONE_ERROR(H5E_HEAP, H5E_CANTFREE, FAIL, "unable to free newly created chunk-local heap");
 
         *heap_ptr = NULL;
     }
@@ -1375,38 +1349,37 @@ done:
  * Function:    H5HG__read_local
  *
  * Purpose:     Reads an object from a chunk-local H5HG-style heap.
- *              
+ *
  *              Unlike H5HG_read(), this routine operates on an already
  *              decoded heap supplied by the caller. The heap is owned
- *              by the current structured chunk and is not located or 
+ *              by the current structured chunk and is not located or
  *              protected through the metadata cache.
- * 
+ *
  *              IDX identifies the object within the supplied heap. Object
  *              index zero is reserved for the heap's free-space record
  *              and is not valid payload object.
- * 
+ *
  *              If OBJECT is non-NULL, the caller is respsonsible for
  *              supplying a buffer large enough to hold that object.
- * 
+ *
  *              If OBJECT is NULL, this routine allocates a result buffer
  *              with H5MM_malloc(). The caller must release it with
  *              H5MM_free().
- * 
+ *
  *              On success, BUF_SIZE, when non-NULL, is set to the logical
  *              payload size.
  *
  * Return:      Success: Pointer to the object buffer
  *              Failure: NULL
- * 
+ *
  *                                                      -- AZO 06/28/26
- * 
+ *
  *-------------------------------------------------------------------------
  */
 void *
-H5HG__read_local(H5F_t *f, const H5HG_heap_t *heap, size_t idx,
-                 void *object, size_t *buf_size)
+H5HG__read_local(H5F_t *f, const H5HG_heap_t *heap, size_t idx, void *object, size_t *buf_size)
 {
-    size_t   size      = 0;      /* Size of the heap object */
+    size_t   size = 0; /* Size of the heap object */
     size_t   alloc_size;
     uint8_t *p         = NULL;   /* Pointer to the object in the heap */
     void    *orig_obj  = object; /* Keep a copy of the original object pointer */
@@ -1419,60 +1392,56 @@ H5HG__read_local(H5F_t *f, const H5HG_heap_t *heap, size_t idx,
     assert(heap);
 
     /* Heap object idx 0 is free space in the heap */
-    if ( ( 0 == idx ) )
-        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL,
-                    "bad local heap index");
+    if ((0 == idx))
+        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL, "bad local heap index");
 
     /* Verify that the supplied index identifies an entry in the local heap's object table */
-    if ( ( idx >= heap->nused ) )
-        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL,
-                    "local heap index out of range");
+    if ((idx >= heap->nused))
+        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL, "local heap index out of range");
 
-    /* 
+    /*
      * Removed objects have cleared table entries. A NULL begin pointer therefore means
-     * that the requested local object no longer exists. 
+     * that the requested local object no longer exists.
      */
-    if ( ( NULL == heap->obj[idx].begin ) )
-        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL,
-                    "bad local heap object pointer");
+    if ((NULL == heap->obj[idx].begin))
+        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL, "bad local heap object pointer");
 
-    /* 
-     * Object table stores the unaligned payload size. The serialized payload begins 
-     * immediately after the object's H5HG header. 
+    /*
+     * Object table stores the unaligned payload size. The serialized payload begins
+     * immediately after the object's H5HG header.
      */
     size = heap->obj[idx].size;
     p    = heap->obj[idx].begin + H5HG_SIZEOF_OBJHDR(f);
 
-    if ( ( !object ) ) {
+    if ((!object)) {
         alloc_size = size > 0 ? size : 1;
-        
-        if ( ( NULL == (object = H5MM_malloc(alloc_size)) ) )
-            HGOTO_ERROR(H5E_RESOURCE, H5E_NOSPACE, NULL,
-                        "unable to allocate chunk-local heap read buffer");
+
+        if ((NULL == (object = H5MM_malloc(alloc_size))))
+            HGOTO_ERROR(H5E_RESOURCE, H5E_NOSPACE, NULL, "unable to allocate chunk-local heap read buffer");
     }
 
-    /* 
+    /*
      * Copy only the logical payload bytes. Any alignment padding stored in
-     * the heap image is not part of the returned object. 
+     * the heap image is not part of the returned object.
      */
-    if ( ( size > 0 ) )
+    if ((size > 0))
         H5MM_memcpy(object, p, size);
 
-    /* 
+    /*
      * Return the logical payload size, regardless of whether the destination buffer
      * was supplied by the caller or allocated here.
      */
-    if ( buf_size )
+    if (buf_size)
         *buf_size = size;
 
     ret_value = object;
 
 done:
-    /* 
+    /*
      * Free only buffers allocated by this routine. Caller-owned buffers must remain
-     * untouched on failure. 
+     * untouched on failure.
      */
-    if ( ( NULL == ret_value ) && ( NULL == orig_obj && object ) )
+    if ((NULL == ret_value) && (NULL == orig_obj && object))
         H5MM_free(object);
 
     FUNC_LEAVE_NOAPI(ret_value)
@@ -1486,7 +1455,7 @@ done:
  *
  * Return:      TRUE if no live payload objects remain
  *              FALSE if at least one live payload object remains.
- * 
+ *
  *                                                  -- AZO   7/09/26
  *
  *-------------------------------------------------------------------------
@@ -1495,7 +1464,7 @@ htri_t
 H5HG__is_empty_local(const H5HG_heap_t *heap)
 {
     unsigned u;
-    htri_t ret_value = true;
+    htri_t   ret_value = true;
 
     FUNC_ENTER_PACKAGE_NOERR
 
@@ -1504,11 +1473,11 @@ H5HG__is_empty_local(const H5HG_heap_t *heap)
 
     /* Skip entry zero as it represents free space */
     for (u = 1; u < heap->nused; u++) {
-        /* 
+        /*
          * A non-null begin pointer identifies a live object. Removed
-         * object entries are cleared by H5HG__remove_local(). 
+         * object entries are cleared by H5HG__remove_local().
          */
-        if ( ( heap->obj[u].begin ) ) {
+        if ((heap->obj[u].begin)) {
             ret_value = false;
             break;
         }
@@ -1517,7 +1486,6 @@ H5HG__is_empty_local(const H5HG_heap_t *heap)
     FUNC_LEAVE_NOAPI(ret_value)
 } /* end H5HG__is_empty_local() */
 
-
 /*-------------------------------------------------------------------------
  * Function:    H5HG__get_obj_size_local
  *
@@ -1525,15 +1493,14 @@ H5HG__is_empty_local(const H5HG_heap_t *heap)
  *              chunk-local H5HG-style heap.
  *
  * Return:      Success:            Non-negative
- * 
+ *
  *              Failure:            Negative
- * 
+ *
  *                                                  -- AZO 7/11/26
  *-------------------------------------------------------------------------
  */
 herr_t
-H5HG__get_obj_size_local(H5F_t *f, const H5HG_heap_t *heap,
-                         size_t idx, size_t *obj_size)
+H5HG__get_obj_size_local(H5F_t *f, const H5HG_heap_t *heap, size_t idx, size_t *obj_size)
 {
     herr_t ret_value = SUCCEED;
 
@@ -1549,17 +1516,14 @@ H5HG__get_obj_size_local(H5F_t *f, const H5HG_heap_t *heap,
 
     /* Heap object idx 0 is the free space in the heap and should not be given out */
     if (0 == idx)
-        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, FAIL,
-                    "bad chunk-local heap index");
+        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, FAIL, "bad chunk-local heap index");
 
     /* Sanity check the heap object */
     if (idx >= heap->nused)
-        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, FAIL,
-                    "chunk-local heap index is out of range");
+        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, FAIL, "chunk-local heap index is out of range");
 
     if (NULL == heap->obj[idx].begin)
-        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, FAIL,
-                    "chunk-local heap object has been removed or is invalid");
+        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, FAIL, "chunk-local heap object has been removed or is invalid");
 
     /* Set object size */
     *obj_size = heap->obj[idx].size;
@@ -1573,24 +1537,23 @@ done:
  *
  * Purpose:     Removes an object from a chunk-local heap. The heap itself is
  *              not freed here; the caller owns heap lifetime.
- * 
+ *
  *              Unlike H5HG_remove(), this routine operates on an in-memory
- *              heap owned by the current structured chunk rather than a 
+ *              heap owned by the current structured chunk rather than a
  *              standalone global heap collection stored in the file.
  *              The caller supplies the heap directly so no metadata-cache
  *              protection or file-space management is performed.
- * 
+ *
  *              If heap_empty is non-null. it is set to indicate whether
  *              any allocated objects remain agter the removal completes.
  *
- * Return:      Non-negative on success/Negative on failure 
- * 
+ * Return:      Non-negative on success/Negative on failure
+ *
  *                                                   -- AZO   7/11/26
  *-------------------------------------------------------------------------
  */
 herr_t
-H5HG__remove_local(H5F_t *f, H5HG_heap_t *heap, size_t idx,
-                   hbool_t *heap_empty)
+H5HG__remove_local(H5F_t *f, H5HG_heap_t *heap, size_t idx, hbool_t *heap_empty)
 {
     uint8_t *p         = NULL;
     uint8_t *obj_start = NULL;
@@ -1608,36 +1571,31 @@ H5HG__remove_local(H5F_t *f, H5HG_heap_t *heap, size_t idx,
     assert(heap);
 
     /*
-     * Initialize the optional heap-empty result so callers do not observe a 
+     * Initialize the optional heap-empty result so callers do not observe a
      * stale value if validation fails before the heap is modified.
      */
-    if ( ( heap_empty ) )
+    if ((heap_empty))
         *heap_empty = false;
 
     /* Heap object idx 0 is the free space in the heap and should not be shared */
-    if ( ( 0 == idx ) )
-        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, FAIL,
-                    "bad local heap index");
+    if ((0 == idx))
+        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, FAIL, "bad local heap index");
 
     /* Sanity check the heap object */
-    if ( ( idx >= heap->nused ) )
-        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, FAIL,
-                    "local heap index out of range");
+    if ((idx >= heap->nused))
+        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, FAIL, "local heap index out of range");
 
     /*
      * Treat removal of an already-cleared object as a successful no-op.
      * Report the current heap-empty state if requested.
      */
-    if ( ( 0 == heap->obj[idx].nrefs ) &&
-         ( 0 == heap->obj[idx].size ) &&
-         ( NULL == heap->obj[idx].begin ) ) {
+    if ((0 == heap->obj[idx].nrefs) && (0 == heap->obj[idx].size) && (NULL == heap->obj[idx].begin)) {
 
-        if ( heap_empty ) {
+        if (heap_empty) {
             empty = H5HG__is_empty_local(heap);
 
-            if ( ( empty < 0 ) )
-                HGOTO_ERROR(H5E_HEAP, H5E_CANTGET, FAIL,
-                            "unable to determine whether local heap is empty");
+            if ((empty < 0))
+                HGOTO_ERROR(H5E_HEAP, H5E_CANTGET, FAIL, "unable to determine whether local heap is empty");
 
             *heap_empty = (hbool_t)empty;
         }
@@ -1646,43 +1604,37 @@ H5HG__remove_local(H5F_t *f, H5HG_heap_t *heap, size_t idx,
     } /* end if */
 
     /* Finish sanity checking the heap object */
-    if ( NULL == heap->obj[idx].begin )
-        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, FAIL,
-                    "bad local heap object pointer");
+    if (NULL == heap->obj[idx].begin)
+        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, FAIL, "bad local heap object pointer");
 
     obj_start = heap->obj[idx].begin;
 
     aligned_size = H5HG_ALIGN(heap->obj[idx].size);
-    
-    /* Ensure size is in valid range */
-    if ( ( aligned_size < heap->obj[idx].size ) )
-        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL,
-                    "chunk-local heap object size overflow");
-    
-    if ( ( aligned_size > SIZE_MAX - H5HG_SIZEOF_OBJHDR(f) ) )
-        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL,
-                    "chunk-local heap removal size overflow");
 
-    /* 
-     * Compute the serialized extent occupied by this object. The extent 
-     * includes both the object header and the aligned payload because 
-     * the entire record will be removed from the heap image. 
+    /* Ensure size is in valid range */
+    if ((aligned_size < heap->obj[idx].size))
+        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL, "chunk-local heap object size overflow");
+
+    if ((aligned_size > SIZE_MAX - H5HG_SIZEOF_OBJHDR(f)))
+        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL, "chunk-local heap removal size overflow");
+
+    /*
+     * Compute the serialized extent occupied by this object. The extent
+     * includes both the object header and the aligned payload because
+     * the entire record will be removed from the heap image.
      */
     need = aligned_size + H5HG_SIZEOF_OBJHDR(f);
 
     /*
-     * Verify that the object extent lies entirely inside the local 
-     * heap image. This becomes particularly important after local 
+     * Verify that the object extent lies entirely inside the local
+     * heap image. This becomes particularly important after local
      * heaps are decoded from on-disk section data.
      */
-    if ( ( obj_start < heap->chunk ) ||
-         ( obj_start > heap->chunk + heap->size) )
-        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, FAIL,
-                    "local heap object pointer is outside heap image");
+    if ((obj_start < heap->chunk) || (obj_start > heap->chunk + heap->size))
+        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, FAIL, "local heap object pointer is outside heap image");
 
-    if ( (need > heap->size - (size_t)(obj_start - heap->chunk) ) )
-        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, FAIL,
-                    "local heap object extends beyond heap image");
+    if ((need > heap->size - (size_t)(obj_start - heap->chunk)))
+        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, FAIL, "local heap object extends beyond heap image");
 
     /*
      * Compact the heap by shifting every object that follows the removed
@@ -1690,42 +1642,40 @@ H5HG__remove_local(H5F_t *f, H5HG_heap_t *heap, size_t idx,
      * cached pointer before moving the serialized bytes.
      */
     for (u = 0; u < heap->nused; u++)
-        if ( ( heap->obj[u].begin ) &&
-             ( heap->obj[u].begin > heap->obj[idx].begin ) )
-             heap->obj[u].begin -= need;
+        if ((heap->obj[u].begin) && (heap->obj[u].begin > heap->obj[idx].begin))
+            heap->obj[u].begin -= need;
 
-    /* 
+    /*
      * Return the reclaimed space to object zero, which represents the free
      * space within the local heap. If no free-space object currently exists,
      * create one at the rexlaimed location; otherwise enlarge the existing
      * free-space extent.
      */
-    if ( ( NULL == heap->obj[0].begin ) ) {
+    if ((NULL == heap->obj[0].begin)) {
         heap->obj[0].begin = heap->chunk + (heap->size - need);
         heap->obj[0].size  = need;
         heap->obj[0].nrefs = 0;
     }
     else {
-        if ( ( need > ( SIZE_MAX - heap->obj[0].size ) ) )
-            HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL,
-                        "chunk-local heap free-space size overflow");
+        if ((need > (SIZE_MAX - heap->obj[0].size)))
+            HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL, "chunk-local heap free-space size overflow");
 
         heap->obj[0].size += need;
     }
 
     move_size = heap->size - (size_t)((obj_start + need) - heap->chunk);
 
-    /* 
+    /*
      * Remove the serialized object record from the heap image by sliding
-     * the remaining bytes towards the beginning of the heap. 
+     * the remaining bytes towards the beginning of the heap.
      */
     memmove(obj_start, obj_start + need, move_size);
 
-    /* 
+    /*
      * Rewrite the free-space object's serialized header so the heap
      * image remains internally consistent after compaction.
      */
-    if ( ( heap->obj[0].size >= H5HG_SIZEOF_OBJHDR(f) ) ) {
+    if ((heap->obj[0].size >= H5HG_SIZEOF_OBJHDR(f))) {
         p = heap->obj[0].begin;
 
         UINT16ENCODE(p, 0); /* Object ID */
@@ -1737,12 +1687,11 @@ H5HG__remove_local(H5F_t *f, H5HG_heap_t *heap, size_t idx,
     /* Clear the in-memory object-table entry so its index may be reused. */
     memset(heap->obj + idx, 0, sizeof(H5HG_obj_t));
 
-    if ( heap_empty ) {
+    if (heap_empty) {
         empty = H5HG__is_empty_local(heap);
 
         if (empty < 0)
-            HGOTO_ERROR(H5E_HEAP, H5E_CANTGET, FAIL,
-                        "unable to determine whether local heap is empty");
+            HGOTO_ERROR(H5E_HEAP, H5E_CANTGET, FAIL, "unable to determine whether local heap is empty");
 
         *heap_empty = (hbool_t)empty;
     }
@@ -1774,14 +1723,13 @@ done:
  *              checksum, or other section-level information.
  *
  * Return:      SUCCEED/FAIL
- * 
+ *
  *                                              -- AZO   7/14/26
  *
  *-------------------------------------------------------------------------
  */
 herr_t
-H5HG__encode_local(const H5HG_heap_t *heap, uint8_t **image_out,
-                   size_t *image_len_out)
+H5HG__encode_local(const H5HG_heap_t *heap, uint8_t **image_out, size_t *image_len_out)
 {
     uint8_t *image     = NULL;    /* Newly allocated serialized heap image */
     herr_t   ret_value = SUCCEED; /* Return value */
@@ -1804,15 +1752,13 @@ H5HG__encode_local(const H5HG_heap_t *heap, uint8_t **image_out,
      * A chunk-local heap is embedded in its owning structured chunk and
      * therefore must not have a standalone global-heap file address.
      */
-    if ( H5_addr_defined(heap->addr) )
-        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, FAIL,
-                    "chunk-local heap unexpectedly has a file address");
+    if (H5_addr_defined(heap->addr))
+        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, FAIL, "chunk-local heap unexpectedly has a file address");
 
-    if ( NULL == heap->chunk )
-        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, FAIL,
-                    "chunk-local heap has no serialized image");
+    if (NULL == heap->chunk)
+        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, FAIL, "chunk-local heap has no serialized image");
 
-    if ( heap->size < (size_t)H5HG_MINSIZE )
+    if (heap->size < (size_t)H5HG_MINSIZE)
         HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, FAIL,
                     "chunk-local heap image is smaller than the minimum heap size");
 
@@ -1820,9 +1766,8 @@ H5HG__encode_local(const H5HG_heap_t *heap, uint8_t **image_out,
      * Allocate an independent output image. SCC may retain or transform this
      * buffer after the decoded in-memory heap has been released.
      */
-    if ( NULL == (image = H5MM_malloc(heap->size)) )
-        HGOTO_ERROR(H5E_RESOURCE, H5E_NOSPACE, FAIL,
-                    "unable to allocate encoded chunk-local heap image");
+    if (NULL == (image = H5MM_malloc(heap->size)))
+        HGOTO_ERROR(H5E_RESOURCE, H5E_NOSPACE, FAIL, "unable to allocate encoded chunk-local heap image");
 
     /*
      * HEAP->CHUNK is already maintained in serialized H5HG form.
@@ -1863,7 +1808,7 @@ done:
  *
  * Return:      Success: Pointer to a newly decoded chunk-local heap
  *              Failure: NULL
- * 
+ *
  *                                              -- AZO   7/14/26
  *
  *-------------------------------------------------------------------------
@@ -1894,14 +1839,13 @@ H5HG__decode_local(H5F_t *f, const void *image, size_t len)
      * Validate the length before calculating P_END. This prevents an
      * invalid or zero length from underflowing the end-pointer expression.
      */
-    if ( ( len < (size_t)H5HG_MINSIZE ) )
+    if ((len < (size_t)H5HG_MINSIZE))
         HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL,
                     "chunk-local H5HG image is smaller than the minimum heap size");
 
     /* Allocate the in-memory heap descriptor. */
-    if ( ( NULL == (heap = H5FL_CALLOC(H5HG_heap_t)) ) )
-        HGOTO_ERROR(H5E_RESOURCE, H5E_NOSPACE, NULL,
-                    "unable to allocate chunk-local heap descriptor");
+    if ((NULL == (heap = H5FL_CALLOC(H5HG_heap_t))))
+        HGOTO_ERROR(H5E_RESOURCE, H5E_NOSPACE, NULL, "unable to allocate chunk-local heap descriptor");
 
     /*
      * A local heap has no standalone file address. Retain the file-shared
@@ -1912,9 +1856,8 @@ H5HG__decode_local(H5F_t *f, const void *image, size_t len)
     heap->shared = H5F_SHARED(f);
 
     /* Allocate and retain a private copy of the serialized collection. */
-    if ( ( NULL == (heap->chunk = H5FL_BLK_MALLOC(gheap_chunk, len)) ) )
-        HGOTO_ERROR(H5E_RESOURCE, H5E_NOSPACE, NULL,
-                    "unable to allocate chunk-local heap image");
+    if ((NULL == (heap->chunk = H5FL_BLK_MALLOC(gheap_chunk, len))))
+        HGOTO_ERROR(H5E_RESOURCE, H5E_NOSPACE, NULL, "unable to allocate chunk-local heap image");
 
     H5MM_memcpy(heap->chunk, image, len);
 
@@ -1925,16 +1868,16 @@ H5HG__decode_local(H5F_t *f, const void *image, size_t len)
     p_end = heap->chunk + len - 1;
 
     /* Decode and validate the global-heap collection header. */
-    if ( ( H5_IS_BUFFER_OVERFLOW(heap->chunk, H5HG_SIZEOF_HDR(f), p_end) ) )
+    if ((H5_IS_BUFFER_OVERFLOW(heap->chunk, H5HG_SIZEOF_HDR(f), p_end)))
         HGOTO_ERROR(H5E_HEAP, H5E_OVERFLOW, NULL,
                     "ran off end of chunk-local heap image while decoding header");
 
     /*
-    * Decode the embedded H5HG collection header locally. The equivalent
-    * metadata-cache helper is static to H5HGcache.c, so the chunk-local path
-    * performs the small amount of header parsing it needs here without
-    * changing the legacy cache implementation.
-    */
+     * Decode the embedded H5HG collection header locally. The equivalent
+     * metadata-cache helper is static to H5HGcache.c, so the chunk-local path
+     * performs the small amount of header parsing it needs here without
+     * changing the legacy cache implementation.
+     */
     {
         const uint8_t *hdr = heap->chunk;
 
@@ -1944,8 +1887,7 @@ H5HG__decode_local(H5F_t *f, const void *image, size_t len)
                         "ran off end of chunk-local heap image while decoding signature");
 
         if (memcmp(hdr, H5HG_MAGIC, (size_t)H5_SIZEOF_MAGIC) != 0)
-            HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL,
-                        "bad chunk-local H5HG collection signature");
+            HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL, "bad chunk-local H5HG collection signature");
 
         hdr += H5_SIZEOF_MAGIC;
 
@@ -1955,13 +1897,12 @@ H5HG__decode_local(H5F_t *f, const void *image, size_t len)
                         "ran off end of chunk-local heap image while decoding version");
 
         if (H5HG_VERSION != *hdr++)
-            HGOTO_ERROR(H5E_HEAP, H5E_VERSION, NULL,
-                        "unsupported chunk-local H5HG collection version");
+            HGOTO_ERROR(H5E_HEAP, H5E_VERSION, NULL, "unsupported chunk-local H5HG collection version");
 
         /*
-        * Skip the three reserved bytes in the existing H5HG collection
-        * header. This preserves the legacy global-heap image format.
-        */
+         * Skip the three reserved bytes in the existing H5HG collection
+         * header. This preserves the legacy global-heap image format.
+         */
         if (H5_IS_BUFFER_OVERFLOW(hdr, 3, p_end))
             HGOTO_ERROR(H5E_HEAP, H5E_OVERFLOW, NULL,
                         "ran off end of chunk-local heap image while decoding reserved header bytes");
@@ -1976,15 +1917,14 @@ H5HG__decode_local(H5F_t *f, const void *image, size_t len)
         H5F_DECODE_LENGTH(f, hdr, heap->size);
 
         if (heap->size < H5HG_MINSIZE)
-            HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL,
-                        "chunk-local H5HG collection size is too small");
+            HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL, "chunk-local H5HG collection size is too small");
     }
 
     /*
      * The supplied buffer must contain exactly one complete H5HG collection.
      * A mismatch indicates truncation or trailing bytes in the section data.
      */
-    if ( ( heap->size != len ) )
+    if ((heap->size != len))
         HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL,
                     "encoded heap size does not match chunk-local image length");
 
@@ -1998,13 +1938,11 @@ H5HG__decode_local(H5F_t *f, const void *image, size_t len)
      */
     nalloc = H5HG_NOBJS(f, heap->size);
 
-    if ( ( 0 == nalloc ) )
-        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL,
-                    "invalid chunk-local heap object-table size");
+    if ((0 == nalloc))
+        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL, "invalid chunk-local heap object-table size");
 
-    if ( ( NULL == (heap->obj = H5FL_SEQ_CALLOC(H5HG_obj_t, nalloc)) ) )
-        HGOTO_ERROR(H5E_RESOURCE, H5E_NOSPACE, NULL,
-                    "unable to allocate chunk-local heap object table");
+    if ((NULL == (heap->obj = H5FL_SEQ_CALLOC(H5HG_obj_t, nalloc))))
+        HGOTO_ERROR(H5E_RESOURCE, H5E_NOSPACE, NULL, "unable to allocate chunk-local heap object table");
 
     heap->nalloc = nalloc;
 
@@ -2018,12 +1956,11 @@ H5HG__decode_local(H5F_t *f, const void *image, size_t len)
          * A trailing extent smaller than an object header cannot contain a
          * payload record and is represented as headerless free space.
          */
-        if ( ( (p + H5HG_SIZEOF_OBJHDR(f)) > (heap->chunk + heap->size) ) ) {
+        if (((p + H5HG_SIZEOF_OBJHDR(f)) > (heap->chunk + heap->size))) {
             if (NULL != heap->obj[0].begin)
-                HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL,
-                            "chunk-local free-space object is already defined");
+                HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL, "chunk-local free-space object is already defined");
 
-            heap->obj[0].size = (size_t)((heap->chunk + heap->size) - p);
+            heap->obj[0].size  = (size_t)((heap->chunk + heap->size) - p);
             heap->obj[0].nrefs = 0;
             heap->obj[0].begin = p;
 
@@ -2049,31 +1986,28 @@ H5HG__decode_local(H5F_t *f, const void *image, size_t len)
              * Enlarge the object table if the encoded object index exceeds
              * the initial size-based estimate.
              */
-            if ( ( idx >= heap->nalloc ) ) {
+            if ((idx >= heap->nalloc)) {
                 new_alloc = 0;    /* Enlarged table size */
                 new_obj   = NULL; /* Reallocated object table */
 
-                if ( ( heap->nalloc > (SIZE_MAX / 2) ) )
-                    HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, NULL,
-                                "chunk-local heap object-table size overflow");
+                if ((heap->nalloc > (SIZE_MAX / 2)))
+                    HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, NULL, "chunk-local heap object-table size overflow");
 
                 new_alloc = MAX(heap->nalloc * 2, (size_t)idx + 1);
 
                 if ((size_t)idx >= new_alloc)
-                    HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL,
-                                "invalid chunk-local heap object index");
+                    HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL, "invalid chunk-local heap object index");
 
-                if ( ( NULL == (new_obj = H5FL_SEQ_REALLOC(H5HG_obj_t, heap->obj, new_alloc)) ) )
+                if ((NULL == (new_obj = H5FL_SEQ_REALLOC(H5HG_obj_t, heap->obj, new_alloc))))
                     HGOTO_ERROR(H5E_RESOURCE, H5E_NOSPACE, NULL,
                                 "unable to enlarge chunk-local heap object table");
 
-                memset(&new_obj[heap->nalloc], 0,
-                       (new_alloc - heap->nalloc) * sizeof(new_obj[0]));
+                memset(&new_obj[heap->nalloc], 0, (new_alloc - heap->nalloc) * sizeof(new_obj[0]));
 
                 heap->obj    = new_obj;
                 heap->nalloc = new_alloc;
 
-                if ( ( heap->nalloc <= heap->nused ) )
+                if ((heap->nalloc <= heap->nused))
                     HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL,
                                 "invalid chunk-local heap object-table allocation");
             }
@@ -2082,12 +2016,11 @@ H5HG__decode_local(H5F_t *f, const void *image, size_t len)
              * Reject duplicate serialized object indices. Each index must
              * identify at most one record in the collection.
              */
-            if ( ( heap->obj[idx].begin ) )
-                HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL,
-                            "duplicate object index in chunk-local heap image");
+            if ((heap->obj[idx].begin))
+                HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL, "duplicate object index in chunk-local heap image");
 
             /* Decode the object's reference count. */
-            if ( ( H5_IS_BUFFER_OVERFLOW(p, 2, p_end) ) )
+            if ((H5_IS_BUFFER_OVERFLOW(p, 2, p_end)))
                 HGOTO_ERROR(H5E_HEAP, H5E_OVERFLOW, NULL,
                             "ran off end of chunk-local heap while decoding reference count");
 
@@ -2098,14 +2031,14 @@ H5HG__decode_local(H5F_t *f, const void *image, size_t len)
              * header. Their format remains unchanged from normal global
              * heaps.
              */
-            if ( ( H5_IS_BUFFER_OVERFLOW(p, 4, p_end) ) )
+            if ((H5_IS_BUFFER_OVERFLOW(p, 4, p_end)))
                 HGOTO_ERROR(H5E_HEAP, H5E_OVERFLOW, NULL,
                             "ran off end of chunk-local heap while decoding reserved field");
 
             p += 4;
 
             /* Decode the logical, unaligned payload length. */
-            if ( ( H5_IS_BUFFER_OVERFLOW(p, H5F_sizeof_size(f), p_end) ) )
+            if ((H5_IS_BUFFER_OVERFLOW(p, H5F_sizeof_size(f), p_end)))
                 HGOTO_ERROR(H5E_HEAP, H5E_OVERFLOW, NULL,
                             "ran off end of chunk-local heap while decoding object size");
 
@@ -2117,17 +2050,15 @@ H5HG__decode_local(H5F_t *f, const void *image, size_t len)
              */
             heap->obj[idx].begin = begin;
 
-            if ( (idx > 0) ) {
+            if ((idx > 0)) {
 
                 aligned_size = H5HG_ALIGN(heap->obj[idx].size);
 
                 if (aligned_size < heap->obj[idx].size)
-                    HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, NULL,
-                                "chunk-local heap object size overflow");
+                    HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, NULL, "chunk-local heap object size overflow");
 
                 if (aligned_size > SIZE_MAX - H5HG_SIZEOF_OBJHDR(f))
-                    HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, NULL,
-                                "chunk-local heap object-record size overflow");
+                    HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, NULL, "chunk-local heap object-record size overflow");
 
                 /*
                  * A normal object record contains the object header followed
@@ -2135,7 +2066,7 @@ H5HG__decode_local(H5F_t *f, const void *image, size_t len)
                  */
                 need = H5HG_SIZEOF_OBJHDR(f) + aligned_size;
 
-                if ( ( (size_t)idx > max_idx ) )
+                if (((size_t)idx > max_idx))
                     max_idx = (size_t)idx;
             }
             else {
@@ -2147,7 +2078,7 @@ H5HG__decode_local(H5F_t *f, const void *image, size_t len)
             }
 
             /* Verify that the complete record lies within the heap image. */
-            if ( ( H5_IS_BUFFER_OVERFLOW(begin, need, p_end) ) )
+            if ((H5_IS_BUFFER_OVERFLOW(begin, need, p_end)))
                 HGOTO_ERROR(H5E_HEAP, H5E_OVERFLOW, NULL,
                             "chunk-local heap object extends beyond heap image");
 
@@ -2156,26 +2087,23 @@ H5HG__decode_local(H5F_t *f, const void *image, size_t len)
     }
 
     /* The parser must consume the complete encoded collection. */
-    if ( p != (heap->chunk + heap->size) )
-        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL,
-                    "chunk-local heap image was only partially decoded");
+    if (p != (heap->chunk + heap->size))
+        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL, "chunk-local heap image was only partially decoded");
 
-    if ( !H5HG_ISALIGNED(heap->obj[0].size) )
-        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL,
-                    "decoded chunk-local free-space extent is not aligned");
+    if (!H5HG_ISALIGNED(heap->obj[0].size))
+        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL, "decoded chunk-local free-space extent is not aligned");
 
     /*
      * Set the next never-issued object index. Cleared entries below this
      * value can later be reused after the 16-bit index range wraps.
      */
-    if ( max_idx > 0 )
+    if (max_idx > 0)
         heap->nused = max_idx + 1;
     else
         heap->nused = 1;
 
-    if ( max_idx >= heap->nused )
-        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL,
-                    "invalid next-unused chunk-local heap index");
+    if (max_idx >= heap->nused)
+        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL, "invalid next-unused chunk-local heap index");
 
     ret_value = heap;
     heap      = NULL;
@@ -2185,10 +2113,9 @@ done:
      * Local heaps have not been added to CWFS or H5AC, so partial decode
      * cleanup must use the chunk-local free routine.
      */
-    if ( heap )
-        if ( H5HG__free_local(heap) < 0 )
-            HDONE_ERROR(H5E_HEAP, H5E_CANTFREE, NULL,
-                        "unable to destroy partially decoded chunk-local heap");
+    if (heap)
+        if (H5HG__free_local(heap) < 0)
+            HDONE_ERROR(H5E_HEAP, H5E_CANTFREE, NULL, "unable to destroy partially decoded chunk-local heap");
 
     FUNC_LEAVE_NOAPI(ret_value)
 } /* end H5HG__decode_local() */
