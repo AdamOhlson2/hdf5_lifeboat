@@ -30,11 +30,19 @@
 #include "H5Iprivate.h"  /* IDs                  */
 #include "H5MMprivate.h" /* Memory management    */
 #include "H5Tpkg.h"      /* Datatypes            */
-#include "H5VLprivate.h" /* Virtual Object Layer                     */
+#include "H5VLprivate.h" /* Virtual Object Layer */
+
+#include "H5HGprivate.h" /* Chunk-local H5HG-style heap operations */
 
 /****************/
 /* Local Macros */
 /****************/
+
+/* Version 1 chunk-local VL descriptors store an H5HG object index in the
+ * first two bytes of the reference field. This matches the 16-bit object
+ * index encoded by the reused H5HG image format.
+ */
+#define H5T_VLEN_CHUNK_IDX_SIZE 2
 
 /******************/
 /* Local Typedefs */
@@ -74,6 +82,26 @@ static herr_t H5T__vlen_disk_read(H5VL_object_t *file, void *_vl, void *_buf, si
 static herr_t H5T__vlen_disk_write(H5VL_object_t *file, const H5T_vlen_alloc_info_t *vl_alloc_info, void *_vl,
                                    void *_buf, void *_bg, size_t seq_len, size_t base_size);
 static herr_t H5T__vlen_disk_delete(H5VL_object_t *file, void *_vl);
+
+/* Chunk-local VL context and descriptor-reference helpers. */
+static herr_t H5T__vlen_chunk_get_ctx(const H5T_vlen_chunk_ctx_t **ctx);
+static herr_t H5T__vlen_chunk_ref_encode(const H5T_vlen_chunk_ctx_t *ctx, uint8_t *ref, size_t idx);
+static herr_t H5T__vlen_chunk_ref_decode(const H5T_vlen_chunk_ctx_t *ctx, const uint8_t *ref, size_t *idx);
+static herr_t H5T__vlen_chunk_ref_setnull(const H5T_vlen_chunk_ctx_t *ctx, uint8_t *ref);
+static herr_t H5T__vlen_chunk_ref_isnull(const H5T_vlen_chunk_ctx_t *ctx, const uint8_t *ref, bool *isnull);
+
+/* Chunk-local VL sequence and string callbacks */
+static herr_t H5T__vlen_chunk_getlen(H5VL_object_t *file, const void *_vl, size_t *seq_len);
+static herr_t H5T__vlen_chunk_isnull(const H5VL_object_t *file, void *_vl, bool *isnull);
+static herr_t H5T__vlen_chunk_setnull(H5VL_object_t *file, void *_vl, void *_bg);
+static herr_t H5T__vlen_chunk_read(H5VL_object_t *file, void *_vl, void *_buf, size_t len);
+static herr_t H5T__vlen_chunk_write(H5VL_object_t *file, const H5T_vlen_alloc_info_t *vl_alloc_info,
+                                    void *_vl, void *_buf, void *_bg, size_t seq_len,
+                                    size_t base_size);
+static herr_t H5T__vlen_chunk_delete(H5VL_object_t *file, void *_vl);
+
+/* Datatype visitor callback used to install the chunk-local VL backend */
+static herr_t H5T__vlen_chunk_patch_cb(H5T_t *dt, void *op_data);
 
 /*********************/
 /* Public Variables */
@@ -122,6 +150,25 @@ static const H5T_vlen_class_t H5T_vlen_disk_g = {
     H5T__vlen_disk_read,    /* 'read' */
     H5T__vlen_disk_write,   /* 'write' */
     H5T__vlen_disk_delete   /* 'delete' */
+};
+
+/*
+ * Class for file-side VL strings and sequences whose payloads are stored in
+ * the H5HG-style heap owned by the structured chunk currently being
+ * processed.
+ *
+ * The descriptor is not a direct memory representation, so getptr is NULL.
+ * The remaining callbacks retrieve the current chunk-local heap through the
+ * operation context stored in H5CX.
+ */
+static const H5T_vlen_class_t H5T_vlen_chunk_g = {
+    H5T__vlen_chunk_getlen,  /* 'getlen' */
+    NULL,                    /* 'getptr' */
+    H5T__vlen_chunk_isnull,  /* 'isnull' */
+    H5T__vlen_chunk_setnull, /* 'setnull' */
+    H5T__vlen_chunk_read,    /* 'read' */
+    H5T__vlen_chunk_write,   /* 'write' */
+    H5T__vlen_chunk_delete   /* 'delete' */
 };
 
 /*-------------------------------------------------------------------------
@@ -1083,3 +1130,802 @@ H5T_vlen_reclaim_elmt(void *elem, const H5T_t *dt)
 done:
     FUNC_LEAVE_NOAPI(ret_value)
 } /* H5T_vlen_reclaim_elmt() */
+
+/*-------------------------------------------------------------------------
+ * Function:    H5T__vlen_chunk_get_ctx
+ *
+ * Purpose:     Retrieves the active chunk-local VL context from the current
+ *              API context.
+ *
+ *              The SCC gather/scatter path installs this context before
+ *              invoking datatype conversion. Chunk-local VL callbacks must
+ *              not run without it because the descriptor contains only a
+ *              local object index; the current chunk determines which heap
+ *              that index addresses.
+ *
+ * Return:      Non-negative on success / Negative on failure
+ * 
+ *                                            -- AZO   07/20/26
+ *
+ *-------------------------------------------------------------------------
+ */
+static herr_t
+H5T__vlen_chunk_get_ctx(const H5T_vlen_chunk_ctx_t **ctx)
+{
+    void  *raw_ctx   = NULL;
+    herr_t ret_value = SUCCEED;
+
+    FUNC_ENTER_PACKAGE
+
+    /* Check arguments */
+    assert(ctx);
+
+    *ctx = NULL;
+
+    /* Retrieve the opaque pointer stored in this thread's API context */
+    if ( H5CX_get_vlen_chunk_ctx(&raw_ctx) < 0 )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTGET, FAIL,
+                    "unable to retrieve chunk-local VL context");
+
+    if ( NULL == raw_ctx )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_UNINITIALIZED, FAIL,
+                    "chunk-local VL context is not active");
+
+    *ctx = (const H5T_vlen_chunk_ctx_t *)raw_ctx;
+
+    /*
+     * Validate the fields required by all chunk-local callbacks. A heap may
+     * legitimately be NULL before the first write, but the pointer that owns
+     * that heap must always be present.
+     */
+    if ( NULL == (*ctx)->f )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL,
+                    "chunk-local VL context has no file");
+    if ( NULL == (*ctx)->heap )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL,
+                    "chunk-local VL context has no heap pointer");
+    if ( (*ctx)->ref_nbytes < H5T_VLEN_CHUNK_IDX_SIZE )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL,
+                    "chunk-local VL reference field is too small");
+
+done:
+    if ( ret_value < 0 )
+        *ctx = NULL;
+
+    FUNC_LEAVE_NOAPI(ret_value)
+
+} /* end H5T__vlen_chunk_get_ctx() */
+
+/*-------------------------------------------------------------------------
+ * Function:    H5T__vlen_chunk_ref_encode
+ *
+ * Purpose:     Encode a chunk-local H5HG object index into the reference
+ *              field of a file-side variable-length descriptor.
+ *
+ *              The reference consists of a 16-bit little-endian local heap
+ *              object index followed by reserved bytes, if any. Reserved
+ *              bytes are written as zero to produce a deterministic
+ *              descriptor representation.
+ *
+ *              Object index zero is reserved by the local H5HG heap and is
+ *              used to represent a null reference. Null references must be
+ *              encoded with H5T__vlen_chunk_ref_setnull().
+ *
+ * Return:      Non-negative on success / Negative on failure
+ *
+ *                                           -- AZO   07/20/26
+ *
+ *-------------------------------------------------------------------------
+ */
+static herr_t
+H5T__vlen_chunk_ref_encode(const H5T_vlen_chunk_ctx_t *ctx, uint8_t *ref, size_t idx)
+{
+    uint8_t *p         = ref;
+    herr_t   ret_value = SUCCEED;
+
+    FUNC_ENTER_PACKAGE
+
+    /* Check arguments */
+    assert(ctx);
+    assert(ref);
+
+    if ( ctx->ref_nbytes < H5T_VLEN_CHUNK_IDX_SIZE )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL,
+                    "chunk-local VL reference field is too small");
+
+    if ( 0 == idx )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL,
+                    "cannot encode reserved local heap index zero");
+
+    if ( idx > UINT16_MAX )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_OVERFLOW, FAIL,
+                    "chunk-local heap index does not fit in descriptor");
+
+    /* Clear reserved bytes before encoding the local heap index. */
+    memset(ref, 0, ctx->ref_nbytes);
+    UINT16ENCODE(p, idx);
+
+done:
+    FUNC_LEAVE_NOAPI(ret_value)
+
+} /* end H5T__vlen_chunk_ref_encode() */
+
+/*-------------------------------------------------------------------------
+ * Function:    H5T__vlen_chunk_ref_decode
+ *
+ * Purpose:     Decode a chunk-local H5HG object index from the reference
+ *              field of a file-side variable-length descriptor.
+ *
+ *              A decoded index of zero represents a null reference.
+ *              Any bytes beyond the encoded object index are reserved and
+ *              must be zero.
+ *
+ * Return:      Non-negative on success / Negative on failure
+ *
+ *                                           -- AZO   07/20/26
+ *
+ *-------------------------------------------------------------------------
+ */
+static herr_t
+H5T__vlen_chunk_ref_decode(const H5T_vlen_chunk_ctx_t *ctx, const uint8_t *ref, size_t *idx)
+{
+    const uint8_t *p         = ref;
+    uint16_t       idx16     = 0;
+    size_t         u;
+    herr_t         ret_value = SUCCEED;
+
+    FUNC_ENTER_PACKAGE
+
+    /* Check arguments */
+    assert(ctx);
+    assert(ref);
+    assert(idx);
+
+    *idx = 0;
+
+    if ( ctx->ref_nbytes < H5T_VLEN_CHUNK_IDX_SIZE ) 
+        HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL,
+                    "chunk-local VL reference field is too small");
+
+    /* Decode the local H5HG object index */
+    UINT16DECODE(p, idx16);
+
+    /*
+    * Reserved bytes must be zero. This prevents descriptors containing
+    * unexpected data from being accepted silently.
+    */
+    for (u = H5T_VLEN_CHUNK_IDX_SIZE; u < ctx->ref_nbytes; u++)
+        if (ref[u] != 0)
+            HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL,
+                        "chunk-local VL descriptor has nonzero reserved bytes");
+
+    *idx = (size_t)idx16;
+
+done:
+    FUNC_LEAVE_NOAPI(ret_value)
+
+} /* end H5T__vlen_chunk_ref_decode() */
+
+/*-------------------------------------------------------------------------
+ * Function:    H5T__vlen_chunk_ref_setnull
+ *
+ * Purpose:     Set the reference field of a file-side variable-length
+ *              descriptor to its null representation.
+ *
+ *              A null reference is represented by an all-zero reference
+ *              field. The descriptor's sequence length is managed
+ *              independently by the caller.
+ *
+ * Return:      Non-negative on success / Negative on failure
+ *
+ *                                           -- AZO   07/20/26
+ *
+ *-------------------------------------------------------------------------
+ */
+static herr_t
+H5T__vlen_chunk_ref_setnull(const H5T_vlen_chunk_ctx_t *ctx, uint8_t *ref)
+{
+    herr_t ret_value = SUCCEED;
+
+    FUNC_ENTER_PACKAGE
+
+    /* Check arguments */
+    assert(ctx);
+    assert(ref);
+
+    if ( ctx->ref_nbytes < H5T_VLEN_CHUNK_IDX_SIZE )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL,
+                    "chunk-local VL reference field is too small");
+
+    memset(ref, 0, ctx->ref_nbytes);
+
+done:
+    FUNC_LEAVE_NOAPI(ret_value)
+
+} /* end H5T__vlen_chunk_ref_setnull() */
+
+/*-------------------------------------------------------------------------
+ * Function:    H5T__vlen_chunk_ref_isnull
+ *
+ * Purpose:     Determines whether a chunk-local VL reference field contains
+ *              the null reference.
+ *
+ *              Nullness is determined from the local heap index, not from
+ *              the sequence length. This distinction is required because a
+ *              valid empty VL string or zero-length sequence has length zero
+ *              but may still own a nonzero heap object index.
+ *
+ * Return:      Non-negative on success / Negative on failure
+ * 
+ *                                           -- AZO   07/20/26
+ *
+ *-------------------------------------------------------------------------
+ */
+static herr_t
+H5T__vlen_chunk_ref_isnull(const H5T_vlen_chunk_ctx_t *ctx, const uint8_t *ref, bool *isnull)
+{
+    size_t idx       = 0;
+    herr_t ret_value = SUCCEED;
+
+    FUNC_ENTER_PACKAGE
+
+    /* Check arguments */
+    assert(ctx);
+    assert(ref);
+    assert(isnull);
+
+    *isnull = false;
+
+    if ( H5T__vlen_chunk_ref_decode(ctx, ref, &idx) < 0 )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTDECODE, FAIL,
+                    "unable to decode chunk-local VL reference");
+
+    *isnull = (0 == idx);
+
+done:
+    FUNC_LEAVE_NOAPI(ret_value)
+
+} /* end H5T__vlen_chunk_ref_isnull() */
+
+/*-------------------------------------------------------------------------
+ * Function:    H5T__vlen_chunk_getlen
+ *
+ * Purpose:     Retrieves the logical sequence length from a file-side
+ *              chunk-local VL descriptor.
+ *
+ *              Chunk-local descriptors retain the existing H5T disk layout:
+ *              a four-byte sequence length followed by a storage reference.
+ *              Only the meaning of the storage reference differs.
+ *
+ * Return:      Non-negative on success / Negative on failure
+ * 
+ *                                           -- AZO   07/23/26
+ *
+ *-------------------------------------------------------------------------
+ */
+static herr_t
+H5T__vlen_chunk_getlen(H5VL_object_t H5_ATTR_UNUSED *file, const void *_vl, size_t *seq_len)
+{
+    const uint8_t *vl = (const uint8_t *)_vl;
+
+    FUNC_ENTER_PACKAGE_NOERR
+
+    /* Check arguments */
+    assert(vl);
+    assert(seq_len);
+
+    /* Decode the logical length, which is stored in base-type elements */
+    UINT32DECODE(vl, *seq_len);
+
+    FUNC_LEAVE_NOAPI(SUCCEED)
+
+} /* end H5T__vlen_chunk_getlen() */
+
+/*-------------------------------------------------------------------------
+ * Function:    H5T__vlen_chunk_isnull
+ *
+ * Purpose:     Determines whether a file-side chunk-local VL descriptor
+ *              contains the null reference.
+ *
+ *              The four-byte sequence length is skipped and nullness is
+ *              determined from the local heap reference. A zero sequence
+ *              length alone does not imply null because a valid zero-length
+ *              VL value may still own a heap object.
+ *
+ * Return:      Non-negative on success / Negative on failure
+ * 
+ *                                              -- AZO   07/23/26
+ *
+ *-------------------------------------------------------------------------
+ */
+static herr_t
+H5T__vlen_chunk_isnull(const H5VL_object_t H5_ATTR_UNUSED *file, void *_vl, bool *isnull)
+{
+    const H5T_vlen_chunk_ctx_t *ctx       = NULL;
+    const uint8_t              *vl        = (const uint8_t *)_vl;
+    herr_t                      ret_value = SUCCEED;
+
+    FUNC_ENTER_PACKAGE
+
+    /* Check arguments */
+    assert(vl);
+    assert(isnull);
+
+    *isnull = false;
+
+    /* Retrieve the heap and descriptor format for the current chunk */
+    if ( H5T__vlen_chunk_get_ctx(&ctx) < 0 )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTGET, FAIL,
+                    "unable to retrieve chunk-local VL context");
+
+    /* Skip the four-byte sequence length and inspect the local reference */
+    if ( H5T__vlen_chunk_ref_isnull(ctx, vl + 4, isnull) < 0 )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTGET, FAIL,
+                    "unable to determine whether chunk-local VL reference is null");
+
+done:
+    FUNC_LEAVE_NOAPI(ret_value)
+
+} /* end H5T__vlen_chunk_isnull() */
+
+/*-------------------------------------------------------------------------
+ * Function:    H5T__vlen_chunk_setnull
+ *
+ * Purpose:     Sets a file-side chunk-local VL descriptor to null.
+ *
+ *              If a background descriptor is supplied, its referenced heap
+ *              object is removed first. The destination descriptor is then
+ *              written with a zero sequence length and an all-zero local
+ *              reference field.
+ *
+ * Return:      Non-negative on success / Negative on failure
+ *
+ *                                               -- AZO   07/23/26
+ *-------------------------------------------------------------------------
+ */
+static herr_t
+H5T__vlen_chunk_setnull(H5VL_object_t H5_ATTR_UNUSED *file, void *_vl, void *_bg)
+{
+    const H5T_vlen_chunk_ctx_t *ctx       = NULL;
+    uint8_t                    *vl        = (uint8_t *)_vl;
+    herr_t                      ret_value = SUCCEED;
+
+    FUNC_ENTER_PACKAGE
+
+    /* Check arguments */
+    assert(vl);
+
+    /* Retrieve and validate the active chunk-local VL context */
+    if ( H5T__vlen_chunk_get_ctx(&ctx) < 0 )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTGET, FAIL,
+                    "unable to retrieve chunk-local VL context");
+
+    /*
+     * Remove the old destination payload before replacing its descriptor.
+     * The background descriptor belongs to the same chunk-local backend.
+     */
+    if (_bg)
+        if ( H5T__vlen_chunk_delete(file, _bg) < 0 )
+            HGOTO_ERROR(H5E_DATATYPE, H5E_CANTREMOVE, FAIL,
+                        "unable to remove background chunk-local VL object");
+
+    /* Encode the null sequence length */
+    UINT32ENCODE(vl, 0);
+
+    /* Encode the null local reference after the sequence length */
+    if ( H5T__vlen_chunk_ref_setnull(ctx, vl) < 0 )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTSET, FAIL,
+                    "unable to set chunk-local VL reference to null");
+
+done:
+    FUNC_LEAVE_NOAPI(ret_value)
+
+} /* end H5T__vlen_chunk_setnull() */
+
+/*-------------------------------------------------------------------------
+ * Function:    H5T__vlen_chunk_read
+ *
+ * Purpose:     Reads the payload referenced by a file-side chunk-local VL
+ *              descriptor into the supplied conversion buffer.
+ *
+ *              The descriptor contains only a local object index. The active
+ *              H5CX operation context identifies the structured chunk, and
+ *              therefore the H5HG-style heap, to which that index belongs.
+ *
+ *              The heap object's stored byte size must exactly match LEN,
+ *              which H5T computes from sequence length multiplied by the
+ *              source base datatype size.
+ *
+ * Return:      Non-negative on success / Negative on failure
+ * 
+ *                                               -- AZO   07/23/26
+ *
+ *-------------------------------------------------------------------------
+ */
+static herr_t
+H5T__vlen_chunk_read(H5VL_object_t H5_ATTR_UNUSED *file, void *_vl, void *_buf, size_t len)
+{
+    const H5T_vlen_chunk_ctx_t *ctx       = NULL;
+    const uint8_t              *vl        = (const uint8_t *)_vl;
+    size_t                      idx       = 0;
+    size_t                      obj_size  = 0;
+    size_t                      read_size = len;
+    herr_t                      ret_value = SUCCEED;
+
+    FUNC_ENTER_PACKAGE
+
+    /* Check arguments */
+    assert(vl);
+    assert(_buf);
+
+    /* Retrieve the local heap belonging to the current structured chunk */
+    if ( H5T__vlen_chunk_get_ctx(&ctx) < 0 )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTGET, FAIL,
+                    "unable to retrieve chunk-local VL context");
+
+    /* Decode the local object index following the sequence length */
+    if ( H5T__vlen_chunk_ref_decode(ctx, vl + 4, &idx) < 0 )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTDECODE, FAIL,
+                    "unable to decode chunk-local VL reference");
+
+    if ( 0 == idx )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL,
+                    "cannot read through a null chunk-local VL reference");
+
+    if ( NULL == *ctx->heap )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL,
+                    "chunk-local VL descriptor refers to a missing heap");
+
+    /*
+     * Validate the payload size before reading. This ensures that descriptor
+     * length information cannot cause a partial read or an overrun of the
+     * conversion buffer.
+     */
+    if ( H5HG__get_obj_size_local(ctx->f, *ctx->heap, idx, &obj_size) < 0 )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTGET, FAIL,
+                    "unable to retrieve chunk-local VL object size");
+
+    if ( obj_size != len )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL,
+                    "chunk-local VL object size does not match descriptor length");
+
+    /* Copy the payload into H5T's conversion buffer */
+    if ( NULL == H5HG__read_local(ctx->f, *ctx->heap, idx, _buf, &read_size) )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_READERROR, FAIL,
+                    "unable to read chunk-local VL object");
+
+    if ( read_size != len )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL,
+                    "chunk-local VL read returned an unexpected object size");
+
+done:
+    FUNC_LEAVE_NOAPI(ret_value)
+
+} /* end H5T__vlen_chunk_read() */
+
+/*-------------------------------------------------------------------------
+ * Function:    H5T__vlen_chunk_write
+ *
+ * Purpose:     Stores a VL payload in the current chunk-local heap and
+ *              encodes its sequence length and local object index into the
+ *              destination descriptor.
+ *
+ *              A heap object is created even when the payload size is zero.
+ *              This preserves the distinction between a valid zero-length
+ *              value, which has a nonzero local index, and a null value,
+ *              whose reference field is all zero.
+ *
+ *              If descriptor encoding fails after insertion, the newly
+ *              inserted heap object is removed so that an unreachable local
+ *              object is not leaked.
+ *
+ * Return:      Non-negative on success / Negative on failure
+ * 
+ *                                               -- AZO   07/23/26
+ *
+ *-------------------------------------------------------------------------
+ */
+static herr_t
+H5T__vlen_chunk_write(H5VL_object_t H5_ATTR_UNUSED *file,
+                      const H5T_vlen_alloc_info_t H5_ATTR_UNUSED *vl_alloc_info, void *_vl,
+                      void *_buf, void *_bg, size_t seq_len, size_t base_size)
+{
+    const H5T_vlen_chunk_ctx_t *ctx          = NULL;
+    uint8_t                    *vl           = (uint8_t *)_vl;
+    size_t                      payload_size = 0;
+    size_t                      idx          = 0;
+    bool                        inserted     = false;
+    herr_t                      ret_value    = SUCCEED;
+
+    FUNC_ENTER_PACKAGE
+
+    /* Check arguments */
+    assert(vl);
+    assert(0 == seq_len || _buf);
+
+    /* Retrieve the heap owner for the current structured chunk */
+    if ( H5T__vlen_chunk_get_ctx(&ctx) < 0 )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTGET, FAIL,
+                    "unable to retrieve chunk-local VL context");
+
+    /* The existing file-side VL descriptor stores length in four bytes */
+    if ( seq_len > UINT32_MAX )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_OVERFLOW, FAIL,
+                    "VL sequence length does not fit in descriptor");
+
+    /* Safely calculate the payload size in bytes */
+    if ( ( base_size > 0 ) && ( seq_len > (SIZE_MAX / base_size) ) )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_OVERFLOW, FAIL,
+                    "chunk-local VL payload size overflows size_t");
+
+    payload_size = seq_len * base_size;
+
+    /*
+     * Match the existing disk backend's overwrite behavior by removing the
+     * old destination object before storing its replacement.
+     */
+    if ( _bg )
+        if ( H5T__vlen_chunk_delete(file, _bg) < 0 )
+            HGOTO_ERROR(H5E_DATATYPE, H5E_CANTREMOVE, FAIL,
+                        "unable to remove background chunk-local VL object");
+
+    /*
+     * Insert into the heap through a double pointer. The local heap is
+     * created lazily when this is the first non-null value written to the
+     * structured chunk.
+     */
+    if ( H5HG__insert_local(ctx->f, ctx->heap, payload_size, _buf, &idx) < 0 )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTINSERT, FAIL,
+                    "unable to insert chunk-local VL object");
+
+    inserted = true;
+
+    /*
+     * Encode the local index first. This operation can reject an index that
+     * does not fit the version 1 reference representation. The object is
+     * removed in the cleanup path if that occurs.
+     */
+    if ( H5T__vlen_chunk_ref_encode(ctx, vl + 4, idx) < 0 )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTENCODE, FAIL,
+                    "unable to encode chunk-local VL reference");
+
+    /* Encode the logical sequence length after storage has succeeded */
+    UINT32ENCODE(vl, seq_len);
+
+    /* The object is now reachable from the completed descriptor */
+    inserted = false;
+
+done:
+    /*
+     * Remove a newly inserted object when descriptor construction failed.
+     * Do not free the heap itself; its lifetime belongs to the structured
+     * chunk.
+     */
+    if ( ( ret_value < 0 ) && ( inserted ) && ( ctx ) && ( ctx->heap ) && ( *ctx->heap ) )
+        if ( H5HG__remove_local(ctx->f, *ctx->heap, idx, NULL) < 0 )
+            HDONE_ERROR(H5E_DATATYPE, H5E_CANTREMOVE, FAIL,
+                        "unable to remove unreferenced chunk-local VL object");
+
+    FUNC_LEAVE_NOAPI(ret_value)
+
+} /* end H5T__vlen_chunk_write() */
+
+/*-------------------------------------------------------------------------
+ * Function:    H5T__vlen_chunk_delete
+ *
+ * Purpose:     Removes the heap object referenced by a file-side chunk-local
+ *              VL descriptor.
+ *
+ *              A null reference requires no action. For a non-null reference,
+ *              the object is removed from the current structured chunk's
+ *              local heap. The descriptor itself is not modified by this
+ *              routine; setnull and write are responsible for replacing it.
+ *
+ *              Deletion is determined from the local object index rather than
+ *              from the sequence length so that valid zero-length objects are
+ *              released correctly.
+ *
+ * Return:      Non-negative on success / Negative on failure
+ * 
+ *                                               -- AZO   07/23/26
+ *
+ *-------------------------------------------------------------------------
+ */
+static herr_t
+H5T__vlen_chunk_delete(H5VL_object_t H5_ATTR_UNUSED *file, void *_vl)
+{
+    const H5T_vlen_chunk_ctx_t *ctx       = NULL;
+    const uint8_t              *vl        = (const uint8_t *)_vl;
+    size_t                      idx       = 0;
+    herr_t                      ret_value = SUCCEED;
+
+    FUNC_ENTER_PACKAGE
+
+    /* A missing descriptor has no referenced object to remove */
+    if ( NULL == vl )
+        HGOTO_DONE(SUCCEED);
+
+    /* Retrieve the local heap belonging to the current structured chunk */
+    if ( H5T__vlen_chunk_get_ctx(&ctx) < 0 )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTGET, FAIL,
+                    "unable to retrieve chunk-local VL context");
+
+    /* Decode the local object index following the sequence length */
+    if ( H5T__vlen_chunk_ref_decode(ctx, vl + 4, &idx) < 0 )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTDECODE, FAIL,
+                    "unable to decode chunk-local VL reference");
+
+    /* An all-zero reference represents null and owns no heap object */
+    if ( 0 == idx )
+        HGOTO_DONE(SUCCEED);
+
+    if ( NULL == *ctx->heap )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL,
+                    "chunk-local VL descriptor refers to a missing heap");
+
+    /*
+     * Remove only the object. The structured chunk remains responsible for
+     * deciding whether an empty heap should be retained, omitted during
+     * serialization, or destroyed.
+     */
+    if ( H5HG__remove_local(ctx->f, *ctx->heap, idx, NULL) < 0 )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTREMOVE, FAIL,
+                    "unable to remove chunk-local VL object");
+
+done:
+    FUNC_LEAVE_NOAPI(ret_value)
+
+} /* end H5T__vlen_chunk_delete() */
+
+/*-------------------------------------------------------------------------
+ * Function:    H5T__vlen_chunk_patch_cb
+ *
+ * Purpose:     H5T__visit() callback that replaces the ordinary file-side
+ *              VL callback class with the structured chunk-local callback
+ *              class.
+ *
+ *              The visitor invokes this routine for all composite nodes in
+ *              the datatype tree. Only H5T_VLEN nodes require modification;
+ *              compounds, arrays, enums, references, and complex types are
+ *              ignored here but are still traversed by H5T__visit().
+ *
+ *              Chunk-local VL descriptors deliberately retain the existing
+ *              disk descriptor size. The first four bytes contain the
+ *              sequence length and the remaining bytes contain the storage
+ *              reference. The reference field is reinterpreted as a local
+ *              H5HG object index, but the datatype layout itself must not
+ *              change.
+ *
+ *              The datatype's location, file pointer, and owned VOL object
+ *              are also left unchanged. They continue to describe a
+ *              file-side datatype - only the mechanism used to access the VL
+ *              payload is replaced for this operation-local datatype copy.
+ *
+ * Return:      Non-negative on success / Negative on failure
+ * 
+ *                                               -- AZO   07/24/26
+ *
+ *-------------------------------------------------------------------------
+ */
+static herr_t
+H5T__vlen_chunk_patch_cb(H5T_t *dt, void *op_data)
+{
+    const size_t ref_nbytes = *(const size_t *)op_data;
+    size_t       expected_size;
+    herr_t       ret_value = SUCCEED;
+
+    FUNC_ENTER_PACKAGE
+
+    /* Check arguments supplied by H5T__visit() */
+    assert(dt);
+    assert(dt->shared);
+    assert(op_data);
+
+    /* Only variable-length datatype nodes require a different backend */
+    if ( H5T_VLEN != dt->shared->type )
+        HGOTO_DONE(SUCCEED);
+
+    /*
+     * This backend operates on file-side descriptors, not hvl_t or char *
+     * memory representations. Requiring a disk-located node also prevents
+     * accidentally modifying the application's memory datatype.
+     */
+    if ( H5T_LOC_DISK != dt->shared->u.vlen.loc )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL,
+                    "cannot install chunk-local backend on a non-disk VL datatype");
+
+    /*
+     * Overflow was checked by H5T_patch_vlen_chunk_local(), but calculate
+     * the expected size locally to make the descriptor requirement clear.
+     */
+    expected_size = 4 + ref_nbytes;
+
+    /*
+     * Never resize the datatype here. Compound offsets, array element sizes,
+     * and enclosing VL base-type sizes were calculated using the existing
+     * file descriptor size. A mismatch means the caller supplied the wrong
+     * reference-field width for this datatype.
+     */
+    if ( dt->shared->size != expected_size )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL,
+                    "chunk-local VL reference size does not match file datatype");
+
+    /*
+     * Replace only the payload-access implementation. The location remains
+     * H5T_LOC_DISK and the file/VOL ownership information remains untouched.
+     */
+    dt->shared->u.vlen.cls = &H5T_vlen_chunk_g;
+
+done:
+    FUNC_LEAVE_NOAPI(ret_value)
+
+} /* end H5T__vlen_chunk_patch_cb() */
+
+/*-------------------------------------------------------------------------
+ * Function:    H5T_patch_vlen_chunk_local
+ *
+ * Purpose:     Installs the structured chunk-local VL backend on every
+ *              variable-length node in an operation-local copy of a
+ *              file-side datatype.
+ *
+ *              The datatype may be a direct VL sequence/string or may
+ *              contain VL values recursively through compounds, arrays,
+ *              enums, or other VL base types. H5T__visit() performs the
+ *              recursive traversal so that each H5T_VLEN node receives the
+ *              chunk-local callback class.
+ *
+ *              This routine does not copy the datatype. The caller must pass
+ *              a private operation-local copy and must not pass the dataset's
+ *              shared datatype directly. Otherwise the normal global
+ *              disk/blob backend could be changed for unrelated I/O.
+ *
+ *              ref_nbytes is the width of the existing storage-reference
+ *              field following the four-byte sequence length. It must be
+ *              large enough for the version 1 local H5HG index and must
+ *              match the existing descriptor size of every VL node.
+ *
+ * Return:      Non-negative on success / Negative on failure
+ * 
+ *                                               -- AZO   07/24/26
+ *
+ *-------------------------------------------------------------------------
+ */
+herr_t
+H5T_patch_vlen_chunk_local(H5T_t *dt, size_t ref_nbytes)
+{
+    herr_t ret_value = SUCCEED;
+
+    FUNC_ENTER_NOAPI(FAIL)
+
+    /* Check argument */
+    assert(dt);
+    assert(dt->shared);
+
+    /* 
+     * Version 1 stores a two-byte H5HG object index at the beginning of
+     * the reference field. 
+     */
+    if ( ref_nbytes < H5T_VLEN_CHUNK_IDX_SIZE )
+        HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL,
+                    "chunk-local VL reference field is too small");
+    
+    /*
+     * Ensure that adding the four-byte sequence length cannot overflow.
+     */
+    if ( ref_nbytes > (SIZE_MAX - 4))
+        HGOTO_ERROR(H5E_DATATYPE, H5E_OVERFLOW, FAIL, 
+                    "chunk-local VL descriptor size overflows size_t");
+
+    /*
+     * VL nodes are composite datatypes. Visit each composite before its
+     * children and patch onlyh nodes whose internal class is H5T_VLEN.
+     * Simple atomic leaf types do not need to be visited.
+     */
+    if ( H5T__visit(dt, H5T_VISIT_COMPOSITE_FIRST, H5T__vlen_chunk_patch_cb, &ref_nbytes) < 0 )
+            HGOTO_ERROR(H5E_DATATYPE, H5E_BADITER, FAIL, 
+                        "unable to install chunk-local VL backend");
+
+done:
+    FUNC_LEAVE_NOAPI(ret_value) 
+
+} /* end H5T_patch_vlen_chunk_local() */

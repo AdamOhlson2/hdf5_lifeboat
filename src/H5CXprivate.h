@@ -267,6 +267,9 @@ typedef struct H5CX_t {
     bool  vol_connector_prop_valid;           /* Whether property for VOL connector ID & info is valid */
     void *vol_wrap_ctx;                       /* VOL connector's "wrap context" for creating IDs */
     bool  vol_wrap_ctx_valid; /* Whether VOL connector's "wrap context" for creating IDs is valid */
+
+    /* Internal: Chunk-local Variable-length data context */
+    void *vlen_chunk_ctx;
 } H5CX_t;
 
 /* Typedef for nodes on the API context stack */
@@ -410,5 +413,9 @@ H5_DLL herr_t H5CX_test_set_mpio_coll_chunk_multi_ratio_ind(int mpio_coll_chunk_
 H5_DLL herr_t H5CX_test_set_mpio_coll_rank0_bcast(bool rank0_bcast);
 #endif /* H5_HAVE_INSTRUMENTED_LIBRARY */
 #endif /* H5_HAVE_PARALLEL */
+
+/* Variable-Length chunk-local fields */
+H5_DLL void   H5CX_set_vlen_chunk_ctx(void *ctx);
+H5_DLL herr_t H5CX_get_vlen_chunk_ctx(void **ctx);
 
 #endif /* H5CXprivate_H */
