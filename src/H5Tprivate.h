@@ -75,25 +75,25 @@ typedef struct {
     void           *free_info;  /* Free information */
 } H5T_vlen_alloc_info_t;
 
-/* 
+/*
  * Context for converting file-side VL descriptors that refer
  * to a chunk-local H5HG-style heap.
- * 
+ *
  * The context is installed only while one structured chunk is
- * being gathered or scattered. H5CX stores it as an opaque 
+ * being gathered or scattered. H5CX stores it as an opaque
  * pointer in the current thread's API context, while H5T interprets
  * the pointed-to object using this type.
- * 
+ *
  * The heap is referenced through its structure tag here to avoid
  * requiring H5Tprivate.h to include H5HGprivate.h or to redeclare
  * H5HG_heap_t.
- * 
+ *
  * ref_nbytes is the number of bytes available after the four-byte
- * sequence length in each file-side VL descriptor. Version 1 encodes 
+ * sequence length in each file-side VL descriptor. Version 1 encodes
  * a 16-bit local H5HG object index at the beginning of that field
  * and requires all remaining bytes to be zero.
- * 
- * H5CX and H5T do not own the file, heap pointer, or context object.  
+ *
+ * H5CX and H5T do not own the file, heap pointer, or context object.
  *
  *                                       --AZO   07/20/26
  */
@@ -177,7 +177,7 @@ H5_DLL H5T_sign_t H5T_get_sign(H5T_t const *dt);
 /*
  * Replace the standard file-side variable-length callback class with the
  * chunk-local callback class throughout the supplied datatype.
- * 
+ *
  * This recursively updates every variable-length datatype contained within
  * the datatype hierarchy while preserving the existing file-side descriptor
  * size. The local heap reference is stored immediately after the four-byte

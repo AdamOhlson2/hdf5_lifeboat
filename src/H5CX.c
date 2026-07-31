@@ -3434,12 +3434,13 @@ done:
  * Purpose:     Sets the chunk-local VL context for the current operation.
  *
  * Return:      None
- * 
+ *
  *                                                    --AZO  07/20/26
  *
  *-------------------------------------------------------------------------
  */
-void H5CX_set_vlen_chunk_ctx(void *ctx)
+void
+H5CX_set_vlen_chunk_ctx(void *ctx)
 {
     H5CX_node_t **head = NULL;
 
@@ -3461,14 +3462,15 @@ void H5CX_set_vlen_chunk_ctx(void *ctx)
  *              operation. Returns NULL through CTX when no context
  *              is active.
  *
- * Return:      Non-negative on success / Negative on failure 
- * 
- * 
+ * Return:      Non-negative on success / Negative on failure
+ *
+ *
  *                                                    --AZO  07/20/26
  *
  *-------------------------------------------------------------------------
  */
-herr_t H5CX_get_vlen_chunk_ctx(void **ctx)
+herr_t
+H5CX_get_vlen_chunk_ctx(void **ctx)
 {
     H5CX_node_t **head      = NULL;
     herr_t        ret_value = SUCCEED;
@@ -3479,10 +3481,9 @@ herr_t H5CX_get_vlen_chunk_ctx(void **ctx)
 
     head = H5CX_get_my_context();
 
-    if( (!head) || (!*head) )
-        HGOTO_ERROR(H5E_CONTEXT, H5E_UNINITIALIZED, FAIL, 
-                    "The API context isn't available");
-    
+    if ((!head) || (!*head))
+        HGOTO_ERROR(H5E_CONTEXT, H5E_UNINITIALIZED, FAIL, "The API context isn't available");
+
     *ctx = (*head)->ctx.vlen_chunk_ctx;
 
 done:

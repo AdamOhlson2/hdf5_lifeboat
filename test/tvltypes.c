@@ -29,7 +29,6 @@
 
 #include "H5Dprivate.h"
 
-
 #include "H5CXprivate.h" /* API operation context */
 #include "H5Dprivate.h"  /* Dataset internals */
 #include "H5Fprivate.h"  /* Native file internals and H5F_VOL_OBJ */
@@ -3279,7 +3278,7 @@ test_vltypes_fill_value(void)
  *                    variable-length values
  *
  * Return:      None.
- * 
+ *
  *                                              -- AZO   07/29/26
  *
  *-------------------------------------------------------------------------
@@ -3287,22 +3286,22 @@ test_vltypes_fill_value(void)
 static void
 test_vltypes_chunk_local_backend(void)
 {
-    H5CX_node_t             api_ctx        = {{0}, NULL};       /* Operation context */
-    H5HG_heap_t            *heap           = NULL;              /* Chunk-local heap under test */
-    H5T_vlen_chunk_ctx_t    chunk_ctx      = {0};               /* Context supplied to the callbacks */
-    H5T_t                  *dt             = NULL;              /* Internal datatype */
-    H5F_t                  *f              = NULL;              /* Internal file */
-    const H5T_vlen_class_t *cls            = NULL;              /* Active callback class */
-    H5VL_object_t          *file_obj       = NULL;              /* Associated file object */
-    void                   *saved_ctx      = NULL;              /* Previously installed chunk-local context */
-    uint8_t                *vl             = NULL;              /* Current descriptor */
-    uint8_t                *bg             = NULL;              /* Background descriptor */
-    hid_t                   fid            = H5I_INVALID_HID;   /* Public HDF5 handles */
-    hid_t                   tid            = H5I_INVALID_HID;
-    size_t                  desc_size      = 0;                 /* Descriptor layout information */
-    size_t                  ref_nbytes     = 0;
-    size_t                  u;                                  /* Loop index */
-    bool                    api_ctx_pushed = false;             /* Cleanup state booleans */
+    H5CX_node_t             api_ctx    = {{0}, NULL};     /* Operation context */
+    H5HG_heap_t            *heap       = NULL;            /* Chunk-local heap under test */
+    H5T_vlen_chunk_ctx_t    chunk_ctx  = {0};             /* Context supplied to the callbacks */
+    H5T_t                  *dt         = NULL;            /* Internal datatype */
+    H5F_t                  *f          = NULL;            /* Internal file */
+    const H5T_vlen_class_t *cls        = NULL;            /* Active callback class */
+    H5VL_object_t          *file_obj   = NULL;            /* Associated file object */
+    void                   *saved_ctx  = NULL;            /* Previously installed chunk-local context */
+    uint8_t                *vl         = NULL;            /* Current descriptor */
+    uint8_t                *bg         = NULL;            /* Background descriptor */
+    hid_t                   fid        = H5I_INVALID_HID; /* Public HDF5 handles */
+    hid_t                   tid        = H5I_INVALID_HID;
+    size_t                  desc_size  = 0; /* Descriptor layout information */
+    size_t                  ref_nbytes = 0;
+    size_t                  u;                      /* Loop index */
+    bool                    api_ctx_pushed = false; /* Cleanup state booleans */
     bool                    ctx_installed  = false;
 
     MESSAGE(5, ("Testing chunk-local VL datatype backend\n"));
@@ -3312,7 +3311,7 @@ test_vltypes_chunk_local_backend(void)
      * the public API. Keep a single API context active for the duration of the
      * test so the chunk-local callback context remains available.
      */
-    if ( H5CX_push(&api_ctx) < 0 ) {
+    if (H5CX_push(&api_ctx) < 0) {
         TestErrPrintf("Unable to push API context for chunk-local VL test\n");
         goto done;
     }
@@ -3322,7 +3321,7 @@ test_vltypes_chunk_local_backend(void)
      * A real H5F_t is needed because the local H5HG image uses the file's
      * configured encoded-size widths when constructing object headers.
      */
-    if ( (fid = H5Fcreate(LOCAL_VL_FILENAME, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT)) < 0 ) {
+    if ((fid = H5Fcreate(LOCAL_VL_FILENAME, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT)) < 0) {
         TestErrPrintf("Unable to create chunk-local VL test file\n");
         goto done;
     }
@@ -3330,7 +3329,7 @@ test_vltypes_chunk_local_backend(void)
     /*
      * Retrieve the native H5F_t used by the local H5HG implementation.
      */
-    if ( NULL == (f = (H5F_t *)H5VL_object(fid)) ) {
+    if (NULL == (f = (H5F_t *)H5VL_object(fid))) {
         TestErrPrintf("Unable to retrieve native file object for chunk-local VL test\n");
         goto done;
     }
@@ -3339,22 +3338,22 @@ test_vltypes_chunk_local_backend(void)
      * Create a standalone VL datatype used only by this test. It can be patched
      * freely without affecting any dataset datatype.
      */
-    if ( (tid = H5Tvlen_create(H5T_NATIVE_UINT)) < 0 ) {
+    if ((tid = H5Tvlen_create(H5T_NATIVE_UINT)) < 0) {
         TestErrPrintf("Unable to create VL datatype for chunk-local backend test\n");
         goto done;
     }
 
-    if ( NULL == (dt = (H5T_t *)H5I_object_verify(tid, H5I_DATATYPE)) ) {
+    if (NULL == (dt = (H5T_t *)H5I_object_verify(tid, H5I_DATATYPE))) {
         TestErrPrintf("Unable to retrieve internal VL datatype object\n");
         goto done;
     }
 
     /*
-     * Convert the datatype from its in-memory representation (hvl_t) to the 
+     * Convert the datatype from its in-memory representation (hvl_t) to the
      * normal file-side descriptor representation before replacing the callback
      * class.
      */
-    if ( H5T_set_loc(dt, H5F_VOL_OBJ(f), H5T_LOC_DISK) < 0 ) {
+    if (H5T_set_loc(dt, H5F_VOL_OBJ(f), H5T_LOC_DISK) < 0) {
         TestErrPrintf("Unable to convert VL datatype to file representation\n");
         goto done;
     }
@@ -3365,7 +3364,7 @@ test_vltypes_chunk_local_backend(void)
      * A chunk-local descriptor contains a four-byte sequence length followed
      * by at least the two-byte local H5HG object index.
      */
-    if ( desc_size < (4 + sizeof(uint16_t)) ) {
+    if (desc_size < (4 + sizeof(uint16_t))) {
         TestErrPrintf("File-side VL descriptor is too small for a local heap index\n");
         goto done;
     }
@@ -3376,17 +3375,17 @@ test_vltypes_chunk_local_backend(void)
      * Replace the ordinary disk/blob callback class throughout this private
      * datatype. The descriptor size itself must remain unchanged.
      */
-    if ( H5T_patch_vlen_chunk_local(dt, ref_nbytes) < 0 ) {
+    if (H5T_patch_vlen_chunk_local(dt, ref_nbytes) < 0) {
         TestErrPrintf("Unable to install chunk-local VL callback class\n");
         goto done;
     }
 
-    if ( dt->shared->size != desc_size ) {
+    if (dt->shared->size != desc_size) {
         TestErrPrintf("Chunk-local VL patch unexpectedly changed descriptor size\n");
         goto done;
     }
 
-    if ( dt->shared->u.vlen.loc != H5T_LOC_DISK ) {
+    if (dt->shared->u.vlen.loc != H5T_LOC_DISK) {
         TestErrPrintf("Chunk-local VL patch unexpectedly changed datatype location\n");
         goto done;
     }
@@ -3398,15 +3397,13 @@ test_vltypes_chunk_local_backend(void)
      * File-side VL descriptors do not directly contain a payload pointer, so
      * getptr must remain NULL. All other storage operations are required.
      */
-    if ( ( NULL == cls ) || ( NULL != cls->getptr ) || ( NULL == cls->getlen ) || 
-        ( NULL == cls->isnull ) || ( NULL == cls->setnull ) || ( NULL == cls->read ) || 
-        ( NULL == cls->write ) || ( NULL == cls->del ) ) 
-    {
+    if ((NULL == cls) || (NULL != cls->getptr) || (NULL == cls->getlen) || (NULL == cls->isnull) ||
+        (NULL == cls->setnull) || (NULL == cls->read) || (NULL == cls->write) || (NULL == cls->del)) {
         TestErrPrintf("Chunk-local VL callback class is incomplete or invalid\n");
         goto done;
     }
 
-    if ( NULL == file_obj ) {
+    if (NULL == file_obj) {
         TestErrPrintf("File-side VL datatype has no file object\n");
         goto done;
     }
@@ -3415,12 +3412,12 @@ test_vltypes_chunk_local_backend(void)
      * VL is the current destination descriptor. BG holds a copy of the old
      * destination descriptor during overwrite and set-null operations.
      */
-    if ( NULL == (vl = (uint8_t *)calloc(1, desc_size)) ) {
+    if (NULL == (vl = (uint8_t *)calloc(1, desc_size))) {
         TestErrPrintf("Unable to allocate chunk-local VL descriptor\n");
         goto done;
     }
 
-    if ( NULL == (bg = (uint8_t *)calloc(1, desc_size)) ) {
+    if (NULL == (bg = (uint8_t *)calloc(1, desc_size))) {
         TestErrPrintf("Unable to allocate background VL descriptor\n");
         goto done;
     }
@@ -3430,7 +3427,7 @@ test_vltypes_chunk_local_backend(void)
      * is eventually invoked while another internal operation has installed a
      * context on the same thread.
      */
-    if ( H5CX_get_vlen_chunk_ctx(&saved_ctx) < 0 ) {
+    if (H5CX_get_vlen_chunk_ctx(&saved_ctx) < 0) {
         TestErrPrintf("Unable to retrieve previous chunk-local VL context\n");
         goto done;
     }
@@ -3464,13 +3461,13 @@ test_vltypes_chunk_local_backend(void)
          * Store a normal nonempty VL value. This exercises lazy heap creation,
          * descriptor encoding, and insertion into the chunk-local heap.
          */
-        if ( cls->write(file_obj, NULL, vl, (void *)wbuf, NULL, (size_t)4, sizeof(unsigned)) < 0 ) {
+        if (cls->write(file_obj, NULL, vl, (void *)wbuf, NULL, (size_t)4, sizeof(unsigned)) < 0) {
             TestErrPrintf("Unable to write initial chunk-local VL value\n");
             goto done;
         }
 
         /* The first write should create the chunk-local heap automatically */
-        if ( NULL == heap ) {
+        if (NULL == heap) {
             TestErrPrintf("Initial chunk-local VL write did not create a heap\n");
             goto done;
         }
@@ -3479,22 +3476,22 @@ test_vltypes_chunk_local_backend(void)
          * Verify that the descriptor reports the expected logical sequence length
          * and is recognized as a valid (non-null) VL value.
          */
-        if ( cls->getlen(file_obj, vl, &seq_len) < 0 ) {
+        if (cls->getlen(file_obj, vl, &seq_len) < 0) {
             TestErrPrintf("Unable to retrieve chunk-local VL sequence length\n");
             goto done;
         }
 
-        if ( seq_len != 4 ) {
+        if (seq_len != 4) {
             TestErrPrintf("Incorrect chunk-local VL sequence length: expected 4, got %zu\n", seq_len);
             goto done;
         }
 
-        if ( cls->isnull(file_obj, vl, &isnull) < 0 ) {
+        if (cls->isnull(file_obj, vl, &isnull) < 0) {
             TestErrPrintf("Unable to test initial chunk-local VL value for null\n");
             goto done;
         }
 
-        if ( isnull ) {
+        if (isnull) {
             TestErrPrintf("Initial chunk-local VL value was incorrectly reported as null\n");
             goto done;
         }
@@ -3505,18 +3502,18 @@ test_vltypes_chunk_local_backend(void)
          * descriptor images.
          */
         for (u = 4 + sizeof(uint16_t); u < desc_size; u++)
-            if ( vl[u] != 0 ) {
+            if (vl[u] != 0) {
                 TestErrPrintf("Chunk-local VL descriptor contains nonzero reserved byte at offset %zu\n", u);
                 goto done;
             }
 
         /* Read the payload back from the local heap and verify that it matches the original value */
-        if ( cls->read(file_obj, vl, rbuf, sizeof(rbuf)) < 0 ) {
+        if (cls->read(file_obj, vl, rbuf, sizeof(rbuf)) < 0) {
             TestErrPrintf("Unable to read initial chunk-local VL value\n");
             goto done;
         }
 
-        if ( memcmp(wbuf, rbuf, sizeof(wbuf)) != 0 ) {
+        if (memcmp(wbuf, rbuf, sizeof(wbuf)) != 0) {
             TestErrPrintf("Initial chunk-local VL read returned incorrect data\n");
             goto done;
         }
@@ -3539,8 +3536,7 @@ test_vltypes_chunk_local_backend(void)
          */
         memcpy(bg, vl, desc_size);
 
-
-        if ( cls->write(file_obj, NULL, vl, (void *)wbuf, bg, (size_t)2, sizeof(unsigned)) < 0 ) {
+        if (cls->write(file_obj, NULL, vl, (void *)wbuf, bg, (size_t)2, sizeof(unsigned)) < 0) {
             TestErrPrintf("Unable to overwrite chunk-local VL value\n");
             goto done;
         }
@@ -3549,23 +3545,23 @@ test_vltypes_chunk_local_backend(void)
          * Verify that the replacement descriptor reflects the new sequence length
          * and continues to represent a valid (non-null) VL value.
          */
-        if ( ( cls->getlen(file_obj, vl, &seq_len) < 0 ) || ( seq_len != 2 ) ) {
+        if ((cls->getlen(file_obj, vl, &seq_len) < 0) || (seq_len != 2)) {
             TestErrPrintf("Incorrect sequence length after chunk-local VL overwrite\n");
             goto done;
         }
 
-        if ( ( cls->isnull(file_obj, vl, &isnull) < 0 ) || ( isnull ) ) {
+        if ((cls->isnull(file_obj, vl, &isnull) < 0) || (isnull)) {
             TestErrPrintf("Overwritten chunk-local VL value was reported as null\n");
             goto done;
         }
 
         /* Confirm that the replacement payload was written correctly */
-        if ( cls->read(file_obj, vl, rbuf, sizeof(rbuf)) < 0 ) {
+        if (cls->read(file_obj, vl, rbuf, sizeof(rbuf)) < 0) {
             TestErrPrintf("Unable to read overwritten chunk-local VL value\n");
             goto done;
         }
 
-        if ( memcmp(wbuf, rbuf, sizeof(wbuf)) != 0 ) {
+        if (memcmp(wbuf, rbuf, sizeof(wbuf)) != 0) {
             TestErrPrintf("Chunk-local VL overwrite returned incorrect data\n");
             goto done;
         }
@@ -3577,8 +3573,8 @@ test_vltypes_chunk_local_backend(void)
      *----------------------------------------------------------------------
      */
     {
-        size_t seq_len   = SIZE_MAX;
-        bool   isnull    = false;
+        size_t seq_len = SIZE_MAX;
+        bool   isnull  = false;
         htri_t heap_empty;
 
         /*
@@ -3587,18 +3583,18 @@ test_vltypes_chunk_local_backend(void)
          */
         memcpy(bg, vl, desc_size);
 
-        if ( cls->setnull(file_obj, vl, bg) < 0 ) {
+        if (cls->setnull(file_obj, vl, bg) < 0) {
             TestErrPrintf("Unable to set chunk-local VL value to null\n");
             goto done;
         }
 
         /* A null descriptor has a zero sequence length and a null local reference */
-        if ( ( cls->getlen(file_obj, vl, &seq_len) < 0 ) || ( seq_len != 0 ) ) {
+        if ((cls->getlen(file_obj, vl, &seq_len) < 0) || (seq_len != 0)) {
             TestErrPrintf("Null chunk-local VL descriptor has a nonzero sequence length\n");
             goto done;
         }
 
-        if ( ( cls->isnull(file_obj, vl, &isnull) < 0 ) || ( !isnull ) ) {
+        if ((cls->isnull(file_obj, vl, &isnull) < 0) || (!isnull)) {
             TestErrPrintf("Chunk-local VL descriptor was not set to null\n");
             goto done;
         }
@@ -3608,7 +3604,7 @@ test_vltypes_chunk_local_backend(void)
          * representation.
          */
         for (u = 0; u < desc_size; u++)
-            if ( vl[u] != 0 ) {
+            if (vl[u] != 0) {
                 TestErrPrintf("Null chunk-local VL descriptor contains nonzero byte at offset %zu\n", u);
                 goto done;
             }
@@ -3617,12 +3613,12 @@ test_vltypes_chunk_local_backend(void)
          * The heap should now contain no allocated objects because the final value
          * was released.
          */
-        if ( ( heap_empty = H5HG__is_empty_local(heap) ) < 0 ) {
+        if ((heap_empty = H5HG__is_empty_local(heap)) < 0) {
             TestErrPrintf("Unable to determine whether chunk-local heap is empty\n");
             goto done;
         }
 
-        if ( !heap_empty ) {
+        if (!heap_empty) {
             TestErrPrintf("Chunk-local heap is not empty after setting its last VL value to null\n");
             goto done;
         }
@@ -3640,11 +3636,11 @@ test_vltypes_chunk_local_backend(void)
          * object and therefore has a non-null local reference.
          */
 
-        size_t seq_len   = SIZE_MAX;
-        bool   isnull    = true;
+        size_t seq_len = SIZE_MAX;
+        bool   isnull  = true;
         htri_t heap_empty;
 
-        if ( cls->write(file_obj, NULL, vl, NULL, NULL, (size_t)0, sizeof(unsigned)) < 0 ) {
+        if (cls->write(file_obj, NULL, vl, NULL, NULL, (size_t)0, sizeof(unsigned)) < 0) {
             TestErrPrintf("Unable to write valid zero-length chunk-local VL value\n");
             goto done;
         }
@@ -3653,17 +3649,17 @@ test_vltypes_chunk_local_backend(void)
          * A zero-length value should report a sequence length of zero without being
          * considered null.
          */
-        if ( ( cls->getlen(file_obj, vl, &seq_len) < 0 ) || ( seq_len != 0 ) ) {
+        if ((cls->getlen(file_obj, vl, &seq_len) < 0) || (seq_len != 0)) {
             TestErrPrintf("Zero-length chunk-local VL value has incorrect sequence length\n");
             goto done;
         }
 
-        if ( cls->isnull(file_obj, vl, &isnull) < 0 ) {
+        if (cls->isnull(file_obj, vl, &isnull) < 0) {
             TestErrPrintf("Unable to test zero-length chunk-local VL value for null\n");
             goto done;
         }
 
-        if ( isnull ) {
+        if (isnull) {
             TestErrPrintf("Valid zero-length chunk-local VL value was incorrectly reported as null\n");
             goto done;
         }
@@ -3672,7 +3668,7 @@ test_vltypes_chunk_local_backend(void)
          * Remove the heap object directly. delete() releases the payload but leaves
          * descriptor management to write() and setnull().
          */
-        if ( cls->del(file_obj, vl) < 0 ) {
+        if (cls->del(file_obj, vl) < 0) {
             TestErrPrintf("Unable to delete zero-length chunk-local VL value\n");
             goto done;
         }
@@ -3681,12 +3677,12 @@ test_vltypes_chunk_local_backend(void)
          * After deleting the final object, the chunk-local heap should again be
          * empty.
          */
-        if ( ( heap_empty = H5HG__is_empty_local(heap) ) < 0 ) {
+        if ((heap_empty = H5HG__is_empty_local(heap)) < 0) {
             TestErrPrintf("Unable to inspect heap after deleting zero-length VL value\n");
             goto done;
         }
 
-        if ( !heap_empty ) {
+        if (!heap_empty) {
             TestErrPrintf("Chunk-local heap is not empty after final VL object deletion\n");
             goto done;
         }
@@ -3698,21 +3694,21 @@ done:
      * Restore the previous operation context before destroying chunk_ctx or
      * any object referenced through it.
      */
-    if ( ctx_installed ) {
+    if (ctx_installed) {
         H5CX_set_vlen_chunk_ctx(saved_ctx);
         ctx_installed = false;
     }
 
-    if ( bg )
+    if (bg)
         free(bg);
-    if ( vl )
+    if (vl)
         free(vl);
 
     /*
      * The structured chunk normally owns the heap. This standalone test acts
      * as that owner and must explicitly release it.
      */
-    if ( heap )
+    if (heap)
         if (H5HG__free_local(heap) < 0)
             TestErrPrintf("Unable to free chunk-local heap after H5T backend test\n");
 
@@ -3720,7 +3716,7 @@ done:
      * Close the datatype before the file because the file-side datatype keeps
      * a reference to the file's VOL object.
      */
-    if ( tid >= 0 ) {
+    if (tid >= 0) {
         herr_t status;
 
         H5E_BEGIN_TRY
@@ -3733,7 +3729,7 @@ done:
             TestErrPrintf("Unable to close chunk-local VL test datatype\n");
     }
 
-    if ( fid >= 0 ) {
+    if (fid >= 0) {
         herr_t status;
 
         H5E_BEGIN_TRY
@@ -3742,11 +3738,11 @@ done:
         }
         H5E_END_TRY
 
-        if ( status < 0 )
+        if (status < 0)
             TestErrPrintf("Unable to close chunk-local VL test file\n");
     }
 
-    if ( api_ctx_pushed )
+    if (api_ctx_pushed)
         if (H5CX_pop(false) < 0)
             TestErrPrintf("Unable to pop API context after chunk-local VL test\n");
 
@@ -3773,7 +3769,7 @@ test_vltypes(void H5_ATTR_UNUSED *params)
 
     /*
      * Test the internal H5T/H5HG chunk-local backend before running the
-     * existing public dataset I/O tests. 
+     * existing public dataset I/O tests.
      */
     test_vltypes_chunk_local_backend();
 
