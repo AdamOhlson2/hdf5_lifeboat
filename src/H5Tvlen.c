@@ -1606,11 +1606,12 @@ done:
  */
 static herr_t
 H5T__vlen_chunk_write(H5VL_object_t H5_ATTR_UNUSED               *file,
-                      const H5T_vlen_alloc_info_t H5_ATTR_UNUSED *vl_alloc_info, void *_vl, void *_buf,
-                      void *_bg, size_t seq_len, size_t base_size)
+                      const H5T_vlen_alloc_info_t H5_ATTR_UNUSED *vl_alloc_info, void *_vl,
+                      void *_buf, void *_bg, size_t seq_len, size_t base_size)
 {
     const H5T_vlen_chunk_ctx_t *ctx          = NULL;
     uint8_t                    *vl           = (uint8_t *)_vl;
+    uint8_t                    *p            = NULL;
     size_t                      payload_size = 0;
     size_t                      idx          = 0;
     bool                        inserted     = false;
@@ -1620,25 +1621,52 @@ H5T__vlen_chunk_write(H5VL_object_t H5_ATTR_UNUSED               *file,
 
     /* Check arguments */
     assert(vl);
-    assert(0 == seq_len || _buf);
+    assert((0 == seq_len) || _buf);
 
-    /* Retrieve the heap owner for the current structured chunk */
+    /* Retrieve the heap owner for the current structured chunk. */
     if (H5T__vlen_chunk_get_ctx(&ctx) < 0)
-        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTGET, FAIL, "unable to retrieve chunk-local VL context");
+        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTGET, FAIL,
+                    "unable to retrieve chunk-local VL context");
 
-    /* The existing file-side VL descriptor stores length in four bytes */
+    /* The existing file-side VL descriptor stores length in four bytes. */
     if (seq_len > UINT32_MAX)
-        HGOTO_ERROR(H5E_DATATYPE, H5E_OVERFLOW, FAIL, "VL sequence length does not fit in descriptor");
+        HGOTO_ERROR(H5E_DATATYPE, H5E_OVERFLOW, FAIL,
+                    "VL sequence length does not fit in descriptor");
 
-    /* Safely calculate the payload size in bytes */
+    /* Safely calculate the payload size in bytes. */
     if ((base_size > 0) && (seq_len > (SIZE_MAX / base_size)))
-        HGOTO_ERROR(H5E_DATATYPE, H5E_OVERFLOW, FAIL, "chunk-local VL payload size overflows size_t");
+        HGOTO_ERROR(H5E_DATATYPE, H5E_OVERFLOW, FAIL,
+                    "chunk-local VL payload size overflows size_t");
 
     payload_size = seq_len * base_size;
 
     /*
-     * Match the existing disk backend's overwrite behavior by removing the
-     * old destination object before storing its replacement.
+     * Insert the replacement before deleting the background object. If this
+     * fails, the original descriptor and its object remain unchanged.
+     */
+    if (H5HG__insert_local(ctx->f, ctx->heap, payload_size, _buf, &idx) < 0)
+        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTINSERT, FAIL,
+                    "unable to insert chunk-local VL object");
+
+    inserted = true;
+
+    /*
+     * Complete all validation required by the version-1 descriptor before
+     * removing the old object. After these checks, publishing the descriptor
+     * requires no fallible operation.
+     */
+    if (0 == idx)
+        HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL,
+                    "chunk-local heap returned reserved object index zero");
+
+    if (idx > UINT16_MAX)
+        HGOTO_ERROR(H5E_DATATYPE, H5E_OVERFLOW, FAIL,
+                    "chunk-local heap index does not fit in descriptor");
+
+    /*
+     * Remove the previous object only after replacement storage and
+     * descriptor validation have succeeded. _BG remains unchanged until
+     * this point, including when it aliases the destination descriptor.
      */
     if (_bg)
         if (H5T__vlen_chunk_delete(file, _bg) < 0)
@@ -1646,42 +1674,30 @@ H5T__vlen_chunk_write(H5VL_object_t H5_ATTR_UNUSED               *file,
                         "unable to remove background chunk-local VL object");
 
     /*
-     * Insert into the heap through a double pointer. The local heap is
-     * created lazily when this is the first non-null value written to the
-     * structured chunk.
+     * Publish the completed descriptor. All required checks have already
+     * succeeded, so the remaining operations are deterministic memory
+     * writes.
      */
-    if (H5HG__insert_local(ctx->f, ctx->heap, payload_size, _buf, &idx) < 0)
-        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTINSERT, FAIL, "unable to insert chunk-local VL object");
+    p = vl;
+    UINT32ENCODE(p, seq_len);
 
-    inserted = true;
+    memset(p, 0, ctx->ref_nbytes);
+    UINT16ENCODE(p, idx);
 
-    /*
-     * Encode the local index first. This operation can reject an index that
-     * does not fit the version 1 reference representation. The object is
-     * removed in the cleanup path if that occurs.
-     */
-    if (H5T__vlen_chunk_ref_encode(ctx, vl + 4, idx) < 0)
-        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTENCODE, FAIL, "unable to encode chunk-local VL reference");
-
-    /* Encode the logical sequence length after storage has succeeded */
-    UINT32ENCODE(vl, seq_len);
-
-    /* The object is now reachable from the completed descriptor */
+    /* The new object is now reachable through the completed descriptor. */
     inserted = false;
 
 done:
     /*
-     * Remove a newly inserted object when descriptor construction failed.
-     * Do not free the heap itself; its lifetime belongs to the structured
-     * chunk.
+     * Remove a newly inserted object when replacement fails before the new
+     * descriptor is published. The structured chunk retains heap ownership.
      */
-    if ((ret_value < 0) && (inserted) && (ctx) && (ctx->heap) && (*ctx->heap))
+    if ((ret_value < 0) && inserted && ctx && ctx->heap && *ctx->heap)
         if (H5HG__remove_local(ctx->f, *ctx->heap, idx, NULL) < 0)
             HDONE_ERROR(H5E_DATATYPE, H5E_CANTREMOVE, FAIL,
                         "unable to remove unreferenced chunk-local VL object");
 
     FUNC_LEAVE_NOAPI(ret_value)
-
 } /* end H5T__vlen_chunk_write() */
 
 /*-------------------------------------------------------------------------
@@ -1715,9 +1731,13 @@ H5T__vlen_chunk_delete(H5VL_object_t H5_ATTR_UNUSED *file, void *_vl)
 
     FUNC_ENTER_PACKAGE
 
-    /* A missing descriptor has no referenced object to remove */
+    /* 
+     * A valid null VL value has an all-zero reference in an existing descriptor.
+     * A missing descriptor pointer is invalid.
+     */
     if (NULL == vl)
-        HGOTO_DONE(SUCCEED);
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL,
+                    "chunk-local VL delete requires a descriptor");
 
     /* Retrieve the local heap belonging to the current structured chunk */
     if (H5T__vlen_chunk_get_ctx(&ctx) < 0)
@@ -1727,7 +1747,7 @@ H5T__vlen_chunk_delete(H5VL_object_t H5_ATTR_UNUSED *file, void *_vl)
     if (H5T__vlen_chunk_ref_decode(ctx, vl + 4, &idx) < 0)
         HGOTO_ERROR(H5E_DATATYPE, H5E_CANTDECODE, FAIL, "unable to decode chunk-local VL reference");
 
-    /* An all-zero reference represents null and owns no heap object */
+    /* Valid descriptor representing null - nothing to remove */
     if (0 == idx)
         HGOTO_DONE(SUCCEED);
 
@@ -1780,7 +1800,7 @@ done:
 static herr_t
 H5T__vlen_chunk_patch_cb(H5T_t *dt, void *op_data)
 {
-    const size_t ref_nbytes = *(const size_t *)op_data;
+    size_t       ref_nbytes;
     size_t       expected_size;
     herr_t       ret_value = SUCCEED;
 
@@ -1790,6 +1810,8 @@ H5T__vlen_chunk_patch_cb(H5T_t *dt, void *op_data)
     assert(dt);
     assert(dt->shared);
     assert(op_data);
+
+    ref_nbytes = *(const size_t *)op_data;
 
     /* Only variable-length datatype nodes require a different backend */
     if (H5T_VLEN != dt->shared->type)
