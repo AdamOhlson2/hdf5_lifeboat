@@ -1606,8 +1606,8 @@ done:
  */
 static herr_t
 H5T__vlen_chunk_write(H5VL_object_t H5_ATTR_UNUSED               *file,
-                      const H5T_vlen_alloc_info_t H5_ATTR_UNUSED *vl_alloc_info, void *_vl,
-                      void *_buf, void *_bg, size_t seq_len, size_t base_size)
+                      const H5T_vlen_alloc_info_t H5_ATTR_UNUSED *vl_alloc_info, void *_vl, void *_buf,
+                      void *_bg, size_t seq_len, size_t base_size)
 {
     const H5T_vlen_chunk_ctx_t *ctx          = NULL;
     uint8_t                    *vl           = (uint8_t *)_vl;
@@ -1625,18 +1625,15 @@ H5T__vlen_chunk_write(H5VL_object_t H5_ATTR_UNUSED               *file,
 
     /* Retrieve the heap owner for the current structured chunk. */
     if (H5T__vlen_chunk_get_ctx(&ctx) < 0)
-        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTGET, FAIL,
-                    "unable to retrieve chunk-local VL context");
+        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTGET, FAIL, "unable to retrieve chunk-local VL context");
 
     /* The existing file-side VL descriptor stores length in four bytes. */
     if (seq_len > UINT32_MAX)
-        HGOTO_ERROR(H5E_DATATYPE, H5E_OVERFLOW, FAIL,
-                    "VL sequence length does not fit in descriptor");
+        HGOTO_ERROR(H5E_DATATYPE, H5E_OVERFLOW, FAIL, "VL sequence length does not fit in descriptor");
 
     /* Safely calculate the payload size in bytes. */
     if ((base_size > 0) && (seq_len > (SIZE_MAX / base_size)))
-        HGOTO_ERROR(H5E_DATATYPE, H5E_OVERFLOW, FAIL,
-                    "chunk-local VL payload size overflows size_t");
+        HGOTO_ERROR(H5E_DATATYPE, H5E_OVERFLOW, FAIL, "chunk-local VL payload size overflows size_t");
 
     payload_size = seq_len * base_size;
 
@@ -1645,8 +1642,7 @@ H5T__vlen_chunk_write(H5VL_object_t H5_ATTR_UNUSED               *file,
      * fails, the original descriptor and its object remain unchanged.
      */
     if (H5HG__insert_local(ctx->f, ctx->heap, payload_size, _buf, &idx) < 0)
-        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTINSERT, FAIL,
-                    "unable to insert chunk-local VL object");
+        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTINSERT, FAIL, "unable to insert chunk-local VL object");
 
     inserted = true;
 
@@ -1656,12 +1652,10 @@ H5T__vlen_chunk_write(H5VL_object_t H5_ATTR_UNUSED               *file,
      * requires no fallible operation.
      */
     if (0 == idx)
-        HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL,
-                    "chunk-local heap returned reserved object index zero");
+        HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL, "chunk-local heap returned reserved object index zero");
 
     if (idx > UINT16_MAX)
-        HGOTO_ERROR(H5E_DATATYPE, H5E_OVERFLOW, FAIL,
-                    "chunk-local heap index does not fit in descriptor");
+        HGOTO_ERROR(H5E_DATATYPE, H5E_OVERFLOW, FAIL, "chunk-local heap index does not fit in descriptor");
 
     /*
      * Remove the previous object only after replacement storage and
@@ -1731,13 +1725,12 @@ H5T__vlen_chunk_delete(H5VL_object_t H5_ATTR_UNUSED *file, void *_vl)
 
     FUNC_ENTER_PACKAGE
 
-    /* 
+    /*
      * A valid null VL value has an all-zero reference in an existing descriptor.
      * A missing descriptor pointer is invalid.
      */
     if (NULL == vl)
-        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL,
-                    "chunk-local VL delete requires a descriptor");
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL, "chunk-local VL delete requires a descriptor");
 
     /* Retrieve the local heap belonging to the current structured chunk */
     if (H5T__vlen_chunk_get_ctx(&ctx) < 0)
@@ -1800,9 +1793,9 @@ done:
 static herr_t
 H5T__vlen_chunk_patch_cb(H5T_t *dt, void *op_data)
 {
-    size_t       ref_nbytes;
-    size_t       expected_size;
-    herr_t       ret_value = SUCCEED;
+    size_t ref_nbytes;
+    size_t expected_size;
+    herr_t ret_value = SUCCEED;
 
     FUNC_ENTER_PACKAGE
 

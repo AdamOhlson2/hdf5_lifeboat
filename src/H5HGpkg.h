@@ -130,7 +130,7 @@ struct H5HG_heap_t {
     struct H5F_shared_t *shared; /* Shared file */
     H5HG_obj_t          *obj;    /* Array of object descriptions */
 
-    size_t               nlive;  /* Number of live payloads */
+    size_t nlive; /* Number of live payloads */
 };
 
 /******************************/
