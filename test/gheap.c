@@ -33,6 +33,12 @@
 /* Number of heap objects to test */
 #define GHEAP_TEST_NOBJS 1024
 
+/*
+ * Normal allocation size for one chunk-local H5HG heap.
+ * This is an in-memory allocation policy, not a persistent file-format field.
+ */
+#define H5HG_LOCAL_NORMAL_HEAP_SIZE ((size_t)(512 * 1024))
+
 #define GHEAP_REPEATED_ERR(MSG)                                                                              \
     do {                                                                                                     \
         nerrors++;                                                                                           \
@@ -587,13 +593,23 @@ test_1_local(hid_t fapl)
         goto error;
     }
 
+    /*
+     * H5HG__insert_local() now inserts only into an existing heap.
+     * Heap selection/creation belongs to the heap-set layer.
+     */
+    if (NULL == (heap = H5HG__create_local(f, 2 * H5HG_LOCAL_NORMAL_HEAP_SIZE))) {
+        H5_FAILED();
+        puts("    Unable to create chunk-local heap");
+        goto error;
+    }
+
     /* Insert progressively larger objects into the same local heap. */
     for (u = 0; u < GHEAP_TEST_NOBJS; u++) {
         size = u + 1;
         memset(out, (int)('A' + u % 26), size);
 
         H5Eclear2(H5E_DEFAULT);
-        if (H5HG__insert_local(f, &heap, size, out, &obj_idx[u]) < 0) {
+        if (H5HG__insert_local(f, heap, size, out, &obj_idx[u]) < 0) {
             H5_FAILED();
             puts("    Unable to insert object into chunk-local heap");
             nerrors++;
@@ -605,14 +621,18 @@ test_1_local(hid_t fapl)
         }
     }
 
-    /* Verify all objects after the heap has grown repeatedly. */
+    /* Verify all inserted objects. */
     for (u = 0; u < GHEAP_TEST_NOBJS; u++) {
+        size_t buf_size;
+
         size = u + 1;
         memset(out, (int)('A' + u % 26), size);
         memset(in, 0, sizeof(in));
 
+        buf_size = sizeof(in);
+
         H5Eclear2(H5E_DEFAULT);
-        if (NULL == H5HG__read_local(f, heap, obj_idx[u], in, NULL)) {
+        if (H5HG__read_local(f, heap, obj_idx[u], in, &buf_size) < 0) {
             H5_FAILED();
             puts("    Unable to read object from chunk-local heap");
             nerrors++;
@@ -690,12 +710,18 @@ test_2_local(hid_t fapl)
         goto error;
     }
 
+    if (NULL == (heap = H5HG__create_local(f, 2 * H5HG_LOCAL_NORMAL_HEAP_SIZE))) {
+        H5_FAILED();
+        puts("    Unable to create chunk-local heap");
+        goto error;
+    }
+
     for (u = 0; u < GHEAP_TEST_NOBJS; u++) {
         size = GHEAP_TEST_NOBJS - u;
         memset(out, (int)('A' + u % 26), size);
 
         H5Eclear2(H5E_DEFAULT);
-        if (H5HG__insert_local(f, &heap, size, out, &obj_idx[u]) < 0) {
+        if (H5HG__insert_local(f, heap, size, out, &obj_idx[u]) < 0) {
             H5_FAILED();
             puts("    Unable to insert object into chunk-local heap");
             nerrors++;
@@ -703,12 +729,16 @@ test_2_local(hid_t fapl)
     }
 
     for (u = 0; u < GHEAP_TEST_NOBJS; u++) {
+        size_t buf_size;
+
         size = GHEAP_TEST_NOBJS - u;
         memset(out, (int)('A' + u % 26), size);
         memset(in, 0, sizeof(in));
 
+        buf_size = sizeof(in);
+
         H5Eclear2(H5E_DEFAULT);
-        if (NULL == H5HG__read_local(f, heap, obj_idx[u], in, NULL)) {
+        if (H5HG__read_local(f, heap, obj_idx[u], in, &buf_size) < 0) {
             H5_FAILED();
             puts("    Unable to read object from chunk-local heap");
             nerrors++;
@@ -787,12 +817,18 @@ test_3_local(hid_t fapl)
         goto error;
     }
 
+    if (NULL == (heap = H5HG__create_local(f, H5HG_LOCAL_NORMAL_HEAP_SIZE))) {
+        H5_FAILED();
+        puts("    Unable to create chunk-local heap");
+        goto error;
+    }
+
     for (u = 0; u < GHEAP_TEST_NOBJS; u++) {
         size = u % 30 + 100;
         memset(out, (int)('A' + u % 26), size);
 
         H5Eclear2(H5E_DEFAULT);
-        if (H5HG__insert_local(f, &heap, size, out, &obj_idx[u]) < 0) {
+        if (H5HG__insert_local(f, heap, size, out, &obj_idx[u]) < 0) {
             H5_FAILED();
             puts("    Unable to insert object into chunk-local heap");
             nerrors++;
@@ -900,12 +936,18 @@ test_4_local(hid_t fapl)
         goto error;
     }
 
+    if (NULL == (heap = H5HG__create_local(f, H5HG_LOCAL_NORMAL_HEAP_SIZE))) {
+        H5_FAILED();
+        puts("    Unable to create chunk-local heap");
+        goto error;
+    }
+
     for (u = 0; u < GHEAP_TEST_NOBJS; u++) {
         size = u % 30 + 100;
         memset(out, (int)('A' + u % 26), size);
 
         H5Eclear2(H5E_DEFAULT);
-        if (H5HG__insert_local(f, &heap, size, out, &obj_idx[u]) < 0) {
+        if (H5HG__insert_local(f, heap, size, out, &obj_idx[u]) < 0) {
             H5_FAILED();
             puts("    Unable to insert object into chunk-local heap");
             nerrors++;
@@ -928,6 +970,8 @@ test_4_local(hid_t fapl)
 
     /* Compaction must not alter any object that remains live. */
     for (u = 0; u < GHEAP_TEST_NOBJS; u++) {
+        size_t buf_size;
+
         if (!live[u])
             continue;
 
@@ -935,8 +979,10 @@ test_4_local(hid_t fapl)
         memset(out, (int)('A' + u % 26), size);
         memset(in, 0, sizeof(in));
 
+        buf_size = sizeof(in);
+
         H5Eclear2(H5E_DEFAULT);
-        if (NULL == H5HG__read_local(f, heap, obj_idx[u], in, NULL)) {
+        if (H5HG__read_local(f, heap, obj_idx[u], in, &buf_size) < 0) {
             H5_FAILED();
             puts("    Unable to read surviving chunk-local heap object");
             nerrors++;
@@ -1048,11 +1094,17 @@ test_ooo_indices_local(hid_t fapl)
         goto error;
     }
 
+    if (NULL == (heap = H5HG__create_local(f, H5HG_LOCAL_NORMAL_HEAP_SIZE))) {
+        H5_FAILED();
+        puts("    Unable to create chunk-local heap");
+        goto error;
+    }
+
     /* Alternate two groups until never-used 16-bit indices are exhausted. */
     for (i = 0; i < 66; i++) {
         for (j = 1000 * ((~i & 1)); j < 1000 * ((~i & 1) + 1); j++) {
             H5Eclear2(H5E_DEFAULT);
-            if (H5HG__insert_local(f, &heap, sizeof(j), &j, &obj_idx[j]) < 0)
+            if (H5HG__insert_local(f, heap, sizeof(j), &j, &obj_idx[j]) < 0)
                 GHEAP_REPEATED_ERR("    Unable to insert object into chunk-local heap");
 
             expected = ((1000 * i) + j - (1000 * ((~i & 1)))) % ((1U << 16) - 1) + 1;
@@ -1087,14 +1139,18 @@ test_ooo_indices_local(hid_t fapl)
 
     /* The final live group occupies obj_idx[0..999]. */
     for (i = 0; i < 1000; i++) {
+        size_t buf_size = sizeof(value);
+
         value = 0;
         H5Eclear2(H5E_DEFAULT);
-        if (NULL == H5HG__read_local(f, decoded, obj_idx[i], &value, NULL)) {
+
+        if (H5HG__read_local(f, decoded, obj_idx[i], &value, &buf_size) < 0) {
             H5_FAILED();
             puts("    Unable to read decoded chunk-local heap object");
             nerrors++;
             break;
         }
+
         if (i != value) {
             H5_FAILED();
             puts("    Incorrect value read from decoded chunk-local heap");
@@ -1231,13 +1287,22 @@ test_encode_decode_local(hid_t fapl)
     }
 
     /*
+     * H5HG__insert_local() now operates on an already-created member heap.
+     */
+    if (NULL == (heap = H5HG__create_local(f, H5HG_LOCAL_NORMAL_HEAP_SIZE))) {
+        H5_FAILED();
+        puts("    Unable to create chunk-local heap");
+        goto error;
+    }
+
+    /*
      * Build the original local heap. Each returned index is retained because the same
      * index must identify the same surviving payload after decode.
      */
     for (u = 0; u < 4; u++) {
         H5Eclear2(H5E_DEFAULT);
 
-        if (H5HG__insert_local(f, &heap, (strlen(values[u]) + 1), values[u], &obj_idx[u]) < 0) {
+        if (H5HG__insert_local(f, heap, (strlen(values[u]) + 1), values[u], &obj_idx[u]) < 0) {
             H5_FAILED();
             puts("    Unable to insert object before local heap encoding");
             nerrors++;
@@ -1282,18 +1347,67 @@ test_encode_decode_local(hid_t fapl)
     }
 
     /*
+     * Verify the new NULL-destination size-query behavior.
+     */
+    {
+        size_t buf_size = 0;
+
+        H5Eclear2(H5E_DEFAULT);
+
+        if (H5HG__read_local(f, decoded, obj_idx[0], NULL, &buf_size) < 0) {
+            H5_FAILED();
+            puts("    Unable to query chunk-local heap object size");
+            nerrors++;
+        }
+        else if (buf_size != strlen(values[0]) + 1) {
+            H5_FAILED();
+            puts("    Incorrect chunk-local heap object size returned");
+            nerrors++;
+        }
+    }
+
+    /*
+     * Verify that an undersized destination fails and reports the required
+     * buffer size without copying past the caller's capacity.
+     */
+    {
+        char   small_buf[1];
+        size_t buf_size = sizeof(small_buf);
+
+        H5E_BEGIN_TRY
+        {
+            if (H5HG__read_local(f, decoded, obj_idx[0], small_buf, &buf_size) >= 0) {
+                H5_FAILED();
+                puts("    Undersized chunk-local heap read unexpectedly succeeded");
+                nerrors++;
+            }
+        }
+        H5E_END_TRY
+
+        if (buf_size != strlen(values[0]) + 1) {
+            H5_FAILED();
+            puts("    Chunk-local heap read did not report required buffer size");
+            nerrors++;
+        }
+    }
+
+    /*
      * Verify all objects that were live when the heap was encoded.
      * Their original local indices and logical payload contents
      * must be preserved.
      */
     for (u = 0; u < 4; u++) {
+        size_t buf_size;
+
         if (1 == u)
             continue;
 
         memset(read_buf, 0, sizeof(read_buf));
+        buf_size = sizeof(read_buf);
+
         H5Eclear2(H5E_DEFAULT);
 
-        if (NULL == H5HG__read_local(f, decoded, obj_idx[u], read_buf, NULL)) {
+        if (H5HG__read_local(f, decoded, obj_idx[u], read_buf, &buf_size) < 0) {
             H5_FAILED();
             puts("    Unable to read surviving object after local heap decode");
             nerrors++;
@@ -1312,8 +1426,11 @@ test_encode_decode_local(hid_t fapl)
      */
     H5E_BEGIN_TRY
     {
+        size_t buf_size = sizeof(read_buf);
+
         memset(read_buf, 0, sizeof(read_buf));
-        removed_reappeared = (NULL != H5HG__read_local(f, decoded, obj_idx[1], read_buf, NULL));
+        removed_reappeared =
+            (H5HG__read_local(f, decoded, obj_idx[1], read_buf, &buf_size) >= 0);
     }
     H5E_END_TRY
 
@@ -1328,7 +1445,7 @@ test_encode_decode_local(hid_t fapl)
      * payload to verify that the decoder restored the free-space record,
      * object-table allocation, next-index state, and internal pointers.
      */
-    if (H5HG__insert_local(f, &decoded, strlen(new_value) + 1, new_value, &new_idx) < 0) {
+    if (H5HG__insert_local(f, decoded, strlen(new_value) + 1, new_value, &new_idx) < 0) {
         H5_FAILED();
         puts("    Unable to insert object into decoded chunk-local heap");
         nerrors++;
@@ -1336,17 +1453,21 @@ test_encode_decode_local(hid_t fapl)
     }
 
     /* Verify the newly inserted payload immediately */
-    memset(read_buf, 0, sizeof(read_buf));
+    {
+        size_t buf_size = sizeof(read_buf);
 
-    if (NULL == H5HG__read_local(f, decoded, new_idx, read_buf, NULL)) {
-        H5_FAILED();
-        puts("    Unable to read object inserted after decode");
-        nerrors++;
-    }
-    else if (strcmp(read_buf, new_value) != 0) {
-        H5_FAILED();
-        puts("    Object inserted after decode has incorrect contents");
-        nerrors++;
+        memset(read_buf, 0, sizeof(read_buf));
+
+        if (H5HG__read_local(f, decoded, new_idx, read_buf, &buf_size) < 0) {
+            H5_FAILED();
+            puts("    Unable to read object inserted after decode");
+            nerrors++;
+        }
+        else if (strcmp(read_buf, new_value) != 0) {
+            H5_FAILED();
+            puts("    Object inserted after decode has incorrect contents");
+            nerrors++;
+        }
     }
 
     /*
@@ -1381,17 +1502,21 @@ test_encode_decode_local(hid_t fapl)
      * Confirm that the payload inserted after the first decode survived the second
      * encode/decode cycle at the same local index.
      */
-    memset(read_buf, 0, sizeof(read_buf));
+    {
+        size_t buf_size = sizeof(read_buf);
 
-    if (NULL == H5HG__read_local(f, decoded_2, new_idx, read_buf, NULL)) {
-        H5_FAILED();
-        puts("    Unable to read post-decode insertion after second round trip");
-        nerrors++;
-    }
-    else if (strcmp(read_buf, new_value) != 0) {
-        H5_FAILED();
-        puts("    Post-decode insertion did not survive second round trip");
-        nerrors++;
+        memset(read_buf, 0, sizeof(read_buf));
+
+        if (H5HG__read_local(f, decoded_2, new_idx, read_buf, &buf_size) < 0) {
+            H5_FAILED();
+            puts("    Unable to read post-decode insertion after second round trip");
+            nerrors++;
+        }
+        else if (strcmp(read_buf, new_value) != 0) {
+            H5_FAILED();
+            puts("    Post-decode insertion did not survive second round trip");
+            nerrors++;
+        }
     }
 
     /* Release both serialized images returned by H5HG__encode_local() */
@@ -1417,7 +1542,7 @@ test_encode_decode_local(hid_t fapl)
 error:
     /*
      * Release whichever heap representations were successfully created
-     * before the faulure.
+     * before the failure.
      */
     if (heap)
         H5HG__free_local(heap);
@@ -1440,6 +1565,923 @@ error:
 
     return MAX(1, nerrors);
 }
+
+/*-------------------------------------------------------------------------
+ * Function:    test_heapset_basic
+ *
+ * Purpose:     Tests basic chunk-local heap-set insertion, lookup, removal,
+ *              and empty-state behavior.
+ *
+ *              The test begins with a NULL heap-set pointer and verifies
+ *              that the first insertion creates the heap set lazily.
+ *              Several small objects are inserted and should share the
+ *              same member heap, demonstrating that heap slot zero is a
+ *              valid descriptor-visible slot.
+ *
+ *              The objects are read back through their returned
+ *              {heap slot, object index} references. The test also inserts
+ *              a zero-length payload and verifies that it receives a real,
+ *              nonzero object index and that a NULL destination can be used
+ *              to query its logical size.
+ *
+ *              Finally, all objects are removed and the heap set must report
+ *              empty. Encoding the empty heap set must produce no logical
+ *              H5_SECTION_VL image.
+ *
+ * Return:      Success:    0
+ *              Failure:    number of errors
+ *
+ *                                              -- AZO   8/26/26
+ *-------------------------------------------------------------------------
+ */
+static int
+test_heapset_basic(hid_t fapl)
+{
+    static const char *values[] = {"first heap-set payload",
+                                   "second heap-set payload",
+                                   "third heap-set payload"};
+
+    hid_t                 file         = H5I_INVALID_HID;
+    H5F_t                *f            = NULL;
+    H5HG_local_heapset_t *heapset      = NULL;
+    uint16_t              heap_slot[4] = {0, 0, 0, 0};
+    uint16_t              obj_idx[4]   = {0, 0, 0, 0};
+    uint8_t              *image        = NULL;
+    size_t                image_len    = 0;
+    char                  read_buf[128];
+    size_t                buf_size;
+    htri_t                is_empty;
+    size_t                u;
+    int                   nerrors = 0;
+    char                  filename[1024];
+
+    TESTING("basic chunk-local heap-set operations");
+
+    h5_fixname(FILENAME[0], fapl, filename, sizeof filename);
+
+    if ((file = H5Fcreate(filename, H5F_ACC_TRUNC, H5P_DEFAULT, fapl)) < 0)
+        goto error;
+
+    if (NULL == (f = (H5F_t *)H5VL_object(file))) {
+        H5_FAILED();
+        puts("    Unable to obtain internal file object");
+        goto error;
+    }
+
+    /* Small objects should all fit in the first normal member heap. */
+    for (u = 0; u < 3; u++) {
+        if (H5HG__insert_local_heapset(f, &heapset, strlen(values[u]) + 1, values[u],
+                                       &heap_slot[u], &obj_idx[u]) < 0) {
+            H5_FAILED();
+            puts("    Unable to insert object into chunk-local heap set");
+            nerrors++;
+            goto error;
+        }
+
+        if (0 != heap_slot[u] || 0 == obj_idx[u]) {
+            H5_FAILED();
+            puts("    Unexpected heap-set reference for small object");
+            nerrors++;
+        }
+    }
+
+    if (NULL == heapset) {
+        H5_FAILED();
+        puts("    Heap set was not created by insertion");
+        nerrors++;
+        goto error;
+    }
+
+    /* Read the normal payloads back through their composite references. */
+    for (u = 0; u < 3; u++) {
+        memset(read_buf, 0, sizeof(read_buf));
+        buf_size = sizeof(read_buf);
+
+        if (H5HG__read_local_heapset(f, heapset, heap_slot[u], obj_idx[u],
+                                     read_buf, &buf_size) < 0) {
+            H5_FAILED();
+            puts("    Unable to read object from chunk-local heap set");
+            nerrors++;
+        }
+        else if (strcmp(read_buf, values[u]) != 0) {
+            H5_FAILED();
+            puts("    Heap-set value read does not match value written");
+            nerrors++;
+        }
+    }
+
+    /*
+     * A zero-length non-null VL value still owns a real heap object and
+     * therefore receives a nonzero object index.
+     */
+    if (H5HG__insert_local_heapset(f, &heapset, 0, NULL,
+                                   &heap_slot[3], &obj_idx[3]) < 0) {
+        H5_FAILED();
+        puts("    Unable to insert zero-length heap-set object");
+        nerrors++;
+        goto error;
+    }
+
+    if (0 != heap_slot[3] || 0 == obj_idx[3]) {
+        H5_FAILED();
+        puts("    Invalid reference returned for zero-length object");
+        nerrors++;
+    }
+
+    /* NULL destination queries the logical payload size. */
+    buf_size = 1;
+
+    if (H5HG__read_local_heapset(f, heapset, heap_slot[3], obj_idx[3],
+                                 NULL, &buf_size) < 0) {
+        H5_FAILED();
+        puts("    Unable to query zero-length heap-set object");
+        nerrors++;
+    }
+    else if (0 != buf_size) {
+        H5_FAILED();
+        puts("    Zero-length heap-set object reported nonzero size");
+        nerrors++;
+    }
+
+    is_empty = H5HG__is_empty_local_heapset(heapset);
+    if (is_empty < 0 || is_empty) {
+        H5_FAILED();
+        puts("    Non-empty heap set reported empty");
+        nerrors++;
+    }
+
+    /* Remove every live object. */
+    for (u = 0; u < 4; u++) {
+        if (H5HG__remove_local_heapset(f, heapset,
+                                       heap_slot[u], obj_idx[u]) < 0) {
+            H5_FAILED();
+            puts("    Unable to remove object from chunk-local heap set");
+            nerrors++;
+            goto error;
+        }
+    }
+
+    is_empty = H5HG__is_empty_local_heapset(heapset);
+    if (is_empty <= 0) {
+        H5_FAILED();
+        puts("    Heap set did not become empty after all removals");
+        nerrors++;
+    }
+
+    /* An empty heap set has no logical VL heap image. */
+    if (H5HG__encode_local_heapset(f, heapset, &image, &image_len) < 0) {
+        H5_FAILED();
+        puts("    Unable to encode empty chunk-local heap set");
+        nerrors++;
+    }
+    else if (NULL != image || 0 != image_len) {
+        H5_FAILED();
+        puts("    Empty heap set produced a non-empty image");
+        nerrors++;
+    }
+
+    if (H5HG__free_local_heapset(heapset) < 0)
+        goto error;
+    heapset = NULL;
+
+    if (H5Fclose(file) < 0)
+        goto error;
+    file = H5I_INVALID_HID;
+
+    if (nerrors)
+        goto error;
+
+    PASSED();
+    return 0;
+
+error:
+    image = H5MM_xfree(image);
+
+    if (heapset)
+        H5HG__free_local_heapset(heapset);
+
+    H5E_BEGIN_TRY
+    {
+        H5Fclose(file);
+    }
+    H5E_END_TRY
+
+    return MAX(1, nerrors);
+} /* end test_heapset_basic() */
+
+/*-------------------------------------------------------------------------
+ * Function:    test_heapset_multiple_heaps
+ *
+ * Purpose:     Tests creation of multiple bounded member heaps and the
+ *              stable-slot rules used by chunk-local VL references.
+ *
+ *              Three payloads are chosen so that each object fits in one
+ *              normal member heap, but two objects cannot coexist in the
+ *              same normal heap. The three insertions must therefore return
+ *              heap slots 0, 1, and 2.
+ *
+ *              The object in slot 1 is then removed. Slot 2 must remain
+ *              valid at its original number because persistent VL
+ *              references cannot be renumbered. A subsequent insertion
+ *              must reuse the now-empty slot 1 instead of creating a new
+ *              slot after slot 2.
+ *
+ *              The test therefore exercises bounded heap creation, growth
+ *              of heap-set pointer capacity, preservation of interior holes,
+ *              reuse of stable slots, and trailing-slot trimming entirely
+ *              through the public heap-set behavior.
+ *
+ * Return:      Success:    0
+ *              Failure:    number of errors
+ *
+ *                                              -- AZO   8/26/26
+ *-------------------------------------------------------------------------
+ */
+static int
+test_heapset_multiple_heaps(hid_t fapl)
+{
+    hid_t                 file             = H5I_INVALID_HID;
+    H5F_t                *f                = NULL;
+    H5HG_local_heapset_t *heapset          = NULL;
+    uint8_t              *out              = NULL;
+    uint8_t              *in               = NULL;
+    size_t                payload_size     = H5HG_LOCAL_NORMAL_HEAP_SIZE / 2;
+    uint16_t              heap_slot[3]     = {0, 0, 0};
+    uint16_t              obj_idx[3]       = {0, 0, 0};
+    uint16_t              replacement_slot = 0;
+    uint16_t              replacement_idx  = 0;
+    size_t                buf_size;
+    size_t                u;
+    htri_t                is_empty;
+    int                   nerrors = 0;
+    char                  filename[1024];
+
+    TESTING("chunk-local heap-set stable slot reuse");
+
+    if (NULL == (out = (uint8_t *)malloc(payload_size)))
+        goto error;
+
+    if (NULL == (in = (uint8_t *)malloc(payload_size)))
+        goto error;
+
+    h5_fixname(FILENAME[1], fapl, filename, sizeof filename);
+
+    if ((file = H5Fcreate(filename, H5F_ACC_TRUNC, H5P_DEFAULT, fapl)) < 0)
+        goto error;
+
+    if (NULL == (f = (H5F_t *)H5VL_object(file))) {
+        H5_FAILED();
+        puts("    Unable to obtain internal file object");
+        goto error;
+    }
+
+    /*
+     * Each payload fits by itself, but two cannot fit in one normal heap.
+     * This forces creation of three member heaps.
+     */
+    for (u = 0; u < 3; u++) {
+        memset(out, (int)('A' + u), payload_size);
+
+        if (H5HG__insert_local_heapset(f, &heapset, payload_size, out,
+                                       &heap_slot[u], &obj_idx[u]) < 0) {
+            H5_FAILED();
+            puts("    Unable to insert object into chunk-local heap set");
+            nerrors++;
+            goto error;
+        }
+
+        if (heap_slot[u] != (uint16_t)u || 0 == obj_idx[u]) {
+            H5_FAILED();
+            puts("    Unexpected stable heap slot");
+            nerrors++;
+            goto error;
+        }
+    }
+
+    /*
+     * Remove slot 1. Slot 2 must remain valid at the same stable number.
+     */
+    if (H5HG__remove_local_heapset(f, heapset,
+                                   heap_slot[1], obj_idx[1]) < 0) {
+        H5_FAILED();
+        puts("    Unable to remove middle heap-set object");
+        nerrors++;
+        goto error;
+    }
+
+    memset(in, 0, payload_size);
+    buf_size = payload_size;
+
+    if (H5HG__read_local_heapset(f, heapset, heap_slot[2], obj_idx[2],
+                                 in, &buf_size) < 0) {
+        H5_FAILED();
+        puts("    Stable slot changed after middle heap removal");
+        nerrors++;
+    }
+    else {
+        memset(out, 'C', payload_size);
+
+        if (memcmp(in, out, payload_size) != 0) {
+            H5_FAILED();
+            puts("    Object in later stable slot was corrupted");
+            nerrors++;
+        }
+    }
+
+    /*
+     * No active member has space for this object, so the manager should
+     * reuse the empty stable slot 1.
+     */
+    memset(out, 'D', payload_size);
+
+    if (H5HG__insert_local_heapset(f, &heapset, payload_size, out,
+                                   &replacement_slot, &replacement_idx) < 0) {
+        H5_FAILED();
+        puts("    Unable to insert replacement heap-set object");
+        nerrors++;
+        goto error;
+    }
+
+    if (1 != replacement_slot || 0 == replacement_idx) {
+        H5_FAILED();
+        puts("    Empty stable heap slot was not reused");
+        nerrors++;
+    }
+
+    memset(in, 0, payload_size);
+    buf_size = payload_size;
+
+    if (H5HG__read_local_heapset(f, heapset,
+                                 replacement_slot, replacement_idx,
+                                 in, &buf_size) < 0) {
+        H5_FAILED();
+        puts("    Unable to read replacement heap-set object");
+        nerrors++;
+    }
+    else if (memcmp(in, out, payload_size) != 0) {
+        H5_FAILED();
+        puts("    Replacement heap-set payload is incorrect");
+        nerrors++;
+    }
+
+    /*
+     * Remove the trailing slot first, followed by slot 1 and slot 0.
+     * This indirectly exercises trimming of unused trailing stable slots.
+     */
+    if (H5HG__remove_local_heapset(f, heapset,
+                                   heap_slot[2], obj_idx[2]) < 0 ||
+        H5HG__remove_local_heapset(f, heapset,
+                                   replacement_slot, replacement_idx) < 0 ||
+        H5HG__remove_local_heapset(f, heapset,
+                                   heap_slot[0], obj_idx[0]) < 0) {
+        H5_FAILED();
+        puts("    Unable to remove remaining heap-set objects");
+        nerrors++;
+        goto error;
+    }
+
+    is_empty = H5HG__is_empty_local_heapset(heapset);
+    if (is_empty <= 0) {
+        H5_FAILED();
+        puts("    Heap set did not become empty");
+        nerrors++;
+    }
+
+    if (H5HG__free_local_heapset(heapset) < 0)
+        goto error;
+    heapset = NULL;
+
+    free(out);
+    out = NULL;
+    free(in);
+    in = NULL;
+
+    if (H5Fclose(file) < 0)
+        goto error;
+    file = H5I_INVALID_HID;
+
+    if (nerrors)
+        goto error;
+
+    PASSED();
+    return 0;
+
+error:
+    if (heapset)
+        H5HG__free_local_heapset(heapset);
+
+    H5E_BEGIN_TRY
+    {
+        H5Fclose(file);
+    }
+    H5E_END_TRY
+
+    free(out);
+    free(in);
+
+    return MAX(1, nerrors);
+} /* end test_heapset_multiple_heaps() */
+
+/*-------------------------------------------------------------------------
+ * Function:    test_heapset_oversized
+ *
+ * Purpose:     Tests heap-set handling of a VL payload that is too large to
+ *              fit in a normal bounded member heap.
+ *
+ *              The oversized payload must remain unsplit and be placed in a
+ *              dedicated larger H5HG member heap. A later small payload must
+ *              not reuse that dedicated oversized heap; it should create a
+ *              normal member heap in the next stable slot. A second small
+ *              payload should then reuse that normal member heap.
+ *
+ *              The test verifies this policy only through the returned
+ *              stable heap-slot values and payload reads, without inspecting
+ *              the internal heap-set or member-heap structures.
+ *
+ *              The oversized object is then removed while the normal heap
+ *              remains live. The normal objects must continue to be
+ *              accessible through their original references, demonstrating
+ *              that stable slot numbering is preserved.
+ *
+ * Return:      Success:    0
+ *              Failure:    number of errors
+ *
+ *                                              -- AZO   8/26/26
+ *-------------------------------------------------------------------------
+ */
+static int
+test_heapset_oversized(hid_t fapl)
+{
+    static const char *small_values[] = {"small payload one",
+                                         "small payload two"};
+
+    hid_t                 file           = H5I_INVALID_HID;
+    H5F_t                *f              = NULL;
+    H5HG_local_heapset_t *heapset        = NULL;
+    uint8_t              *out            = NULL;
+    uint8_t              *in             = NULL;
+    size_t                oversized_size = H5HG_LOCAL_NORMAL_HEAP_SIZE;
+    uint16_t              oversized_slot = 0;
+    uint16_t              oversized_idx  = 0;
+    uint16_t              small_slot[2]  = {0, 0};
+    uint16_t              small_idx[2]   = {0, 0};
+    size_t                buf_size;
+    size_t                u;
+    htri_t                is_empty;
+    int                   nerrors = 0;
+    char                  filename[1024];
+
+    TESTING("chunk-local heap-set oversized object");
+
+    if (NULL == (out = (uint8_t *)malloc(oversized_size)))
+        goto error;
+
+    if (NULL == (in = (uint8_t *)malloc(oversized_size)))
+        goto error;
+
+    h5_fixname(FILENAME[2], fapl, filename, sizeof filename);
+
+    if ((file = H5Fcreate(filename, H5F_ACC_TRUNC, H5P_DEFAULT, fapl)) < 0)
+        goto error;
+
+    if (NULL == (f = (H5F_t *)H5VL_object(file))) {
+        H5_FAILED();
+        puts("    Unable to obtain internal file object");
+        goto error;
+    }
+
+    /*
+     * Once H5HG headers are included, this object is larger than a normal
+     * member heap and therefore requires a dedicated heap.
+     */
+    memset(out, 'X', oversized_size);
+
+    if (H5HG__insert_local_heapset(f, &heapset, oversized_size, out,
+                                   &oversized_slot, &oversized_idx) < 0) {
+        H5_FAILED();
+        puts("    Unable to insert oversized heap-set object");
+        nerrors++;
+        goto error;
+    }
+
+    if (0 != oversized_slot || 0 == oversized_idx) {
+        H5_FAILED();
+        puts("    Unexpected reference for oversized heap-set object");
+        nerrors++;
+    }
+
+    /*
+     * Normal payloads should use a separate normal heap. Both small
+     * payloads should therefore return slot 1.
+     */
+    for (u = 0; u < 2; u++) {
+        if (H5HG__insert_local_heapset(f, &heapset,
+                                       strlen(small_values[u]) + 1,
+                                       small_values[u],
+                                       &small_slot[u], &small_idx[u]) < 0) {
+            H5_FAILED();
+            puts("    Unable to insert normal heap-set object");
+            nerrors++;
+            goto error;
+        }
+    }
+
+    if (1 != small_slot[0] || 1 != small_slot[1] ||
+        0 == small_idx[0] || 0 == small_idx[1]) {
+        H5_FAILED();
+        puts("    Normal object incorrectly used oversized heap");
+        nerrors++;
+    }
+
+    /* Verify the oversized payload. */
+    memset(in, 0, oversized_size);
+    buf_size = oversized_size;
+
+    if (H5HG__read_local_heapset(f, heapset,
+                                 oversized_slot, oversized_idx,
+                                 in, &buf_size) < 0) {
+        H5_FAILED();
+        puts("    Unable to read oversized heap-set object");
+        nerrors++;
+    }
+    else if (memcmp(in, out, oversized_size) != 0) {
+        H5_FAILED();
+        puts("    Oversized heap-set payload is incorrect");
+        nerrors++;
+    }
+
+    /*
+     * Removing slot zero must not change the references to the normal heap
+     * in slot one.
+     */
+    if (H5HG__remove_local_heapset(f, heapset,
+                                   oversized_slot, oversized_idx) < 0) {
+        H5_FAILED();
+        puts("    Unable to remove oversized heap-set object");
+        nerrors++;
+        goto error;
+    }
+
+    for (u = 0; u < 2; u++) {
+        char small_buf[64];
+
+        memset(small_buf, 0, sizeof(small_buf));
+        buf_size = sizeof(small_buf);
+
+        if (H5HG__read_local_heapset(f, heapset,
+                                     small_slot[u], small_idx[u],
+                                     small_buf, &buf_size) < 0) {
+            H5_FAILED();
+            puts("    Normal heap-set reference changed after removal");
+            nerrors++;
+        }
+        else if (strcmp(small_buf, small_values[u]) != 0) {
+            H5_FAILED();
+            puts("    Normal heap-set payload is incorrect");
+            nerrors++;
+        }
+    }
+
+    for (u = 0; u < 2; u++) {
+        if (H5HG__remove_local_heapset(f, heapset,
+                                       small_slot[u], small_idx[u]) < 0) {
+            H5_FAILED();
+            puts("    Unable to remove normal heap-set object");
+            nerrors++;
+            goto error;
+        }
+    }
+
+    is_empty = H5HG__is_empty_local_heapset(heapset);
+    if (is_empty <= 0) {
+        H5_FAILED();
+        puts("    Heap set did not become empty");
+        nerrors++;
+    }
+
+    if (H5HG__free_local_heapset(heapset) < 0)
+        goto error;
+    heapset = NULL;
+
+    free(out);
+    out = NULL;
+    free(in);
+    in = NULL;
+
+    if (H5Fclose(file) < 0)
+        goto error;
+    file = H5I_INVALID_HID;
+
+    if (nerrors)
+        goto error;
+
+    PASSED();
+    return 0;
+
+error:
+    if (heapset)
+        H5HG__free_local_heapset(heapset);
+
+    H5E_BEGIN_TRY
+    {
+        H5Fclose(file);
+    }
+    H5E_END_TRY
+
+    free(out);
+    free(in);
+
+    return MAX(1, nerrors);
+} /* end test_heapset_oversized() */
+
+/*-------------------------------------------------------------------------
+ * Function:    test_heapset_encode_decode
+ *
+ * Purpose:     Tests serialization and reconstruction of a chunk-local heap
+ *              set containing multiple member heaps and an interior stable
+ *              slot hole.
+ *
+ *              Three large objects are first inserted so that they occupy
+ *              stable heap slots 0, 1, and 2. The object in slot 1 is then
+ *              removed, leaving slot 2 active at its original number.
+ *
+ *              The complete heap set is encoded, the original in-memory
+ *              heap set is destroyed, and a new heap set is decoded from
+ *              the serialized image. Objects in slots 0 and 2 must remain
+ *              readable using exactly the same composite references they
+ *              had before encoding.
+ *
+ *              A new large object is then inserted into the decoded heap
+ *              set. It must reuse the restored interior hole at slot 1.
+ *              The modified heap set is encoded and decoded a second time
+ *              to verify that a reconstructed heap set remains mutable and
+ *              serializable and that all three stable references survive
+ *              the second round trip.
+ *
+ *              This directly tests the outer heap-set directory, including
+ *              preservation of stable slot numbers and NULL directory
+ *              entries, while leaving individual H5HG image validation to
+ *              the existing per-heap encode/decode tests.
+ *
+ * Return:      Success:    0
+ *              Failure:    number of errors
+ *
+ *                                              -- AZO   8/26/26
+ *-------------------------------------------------------------------------
+ */
+static int
+test_heapset_encode_decode(hid_t fapl)
+{
+    hid_t                 file             = H5I_INVALID_HID;
+    H5F_t                *f                = NULL;
+    H5HG_local_heapset_t *heapset          = NULL;
+    H5HG_local_heapset_t *decoded          = NULL;
+    H5HG_local_heapset_t *decoded_2        = NULL;
+    uint8_t              *out              = NULL;
+    uint8_t              *in               = NULL;
+    uint8_t              *image            = NULL;
+    uint8_t              *image_2          = NULL;
+    size_t                image_len        = 0;
+    size_t                image_len_2      = 0;
+    size_t                payload_size     = H5HG_LOCAL_NORMAL_HEAP_SIZE / 2;
+    uint16_t              heap_slot[3]     = {0, 0, 0};
+    uint16_t              obj_idx[3]       = {0, 0, 0};
+    uint16_t              replacement_slot = 0;
+    uint16_t              replacement_idx  = 0;
+    size_t                buf_size;
+    size_t                u;
+    int                   nerrors = 0;
+    char                  filename[1024];
+
+    TESTING("chunk-local heap-set encode/decode round trip");
+
+    if (NULL == (out = (uint8_t *)malloc(payload_size)))
+        goto error;
+
+    if (NULL == (in = (uint8_t *)malloc(payload_size)))
+        goto error;
+
+    h5_fixname(FILENAME[3], fapl, filename, sizeof filename);
+
+    if ((file = H5Fcreate(filename, H5F_ACC_TRUNC, H5P_DEFAULT, fapl)) < 0)
+        goto error;
+
+    if (NULL == (f = (H5F_t *)H5VL_object(file))) {
+        H5_FAILED();
+        puts("    Unable to obtain internal file object");
+        goto error;
+    }
+
+    /* Force three separate bounded member heaps. */
+    for (u = 0; u < 3; u++) {
+        memset(out, (int)('A' + u), payload_size);
+
+        if (H5HG__insert_local_heapset(f, &heapset, payload_size, out,
+                                       &heap_slot[u], &obj_idx[u]) < 0) {
+            H5_FAILED();
+            puts("    Unable to build heap set before encoding");
+            nerrors++;
+            goto error;
+        }
+    }
+
+    if (0 != heap_slot[0] || 1 != heap_slot[1] || 2 != heap_slot[2]) {
+        H5_FAILED();
+        puts("    Unexpected heap-set slot layout before encoding");
+        nerrors++;
+        goto error;
+    }
+
+    /* Create an interior stable-slot hole before serialization. */
+    if (H5HG__remove_local_heapset(f, heapset,
+                                   heap_slot[1], obj_idx[1]) < 0) {
+        H5_FAILED();
+        puts("    Unable to remove middle heap-set object");
+        nerrors++;
+        goto error;
+    }
+
+    if (H5HG__encode_local_heapset(f, heapset, &image, &image_len) < 0) {
+        H5_FAILED();
+        puts("    Unable to encode chunk-local heap set");
+        nerrors++;
+        goto error;
+    }
+
+    if (NULL == image || 0 == image_len) {
+        H5_FAILED();
+        puts("    Non-empty heap set produced an empty image");
+        nerrors++;
+        goto error;
+    }
+
+    if (H5HG__free_local_heapset(heapset) < 0)
+        goto error;
+    heapset = NULL;
+
+    if (NULL == (decoded = H5HG__decode_local_heapset(f, image, image_len))) {
+        H5_FAILED();
+        puts("    Unable to decode chunk-local heap set");
+        nerrors++;
+        goto error;
+    }
+
+    /*
+     * Slots zero and two must still resolve using their original references.
+     */
+    for (u = 0; u < 3; u += 2) {
+        memset(in, 0, payload_size);
+        buf_size = payload_size;
+
+        if (H5HG__read_local_heapset(f, decoded,
+                                     heap_slot[u], obj_idx[u],
+                                     in, &buf_size) < 0) {
+            H5_FAILED();
+            puts("    Unable to read object after heap-set decode");
+            nerrors++;
+        }
+        else {
+            memset(out, (int)('A' + u), payload_size);
+
+            if (memcmp(in, out, payload_size) != 0) {
+                H5_FAILED();
+                puts("    Decoded heap-set payload is incorrect");
+                nerrors++;
+            }
+        }
+    }
+
+    /*
+     * The restored hole at slot one should be reused by the next large
+     * insertion.
+     */
+    memset(out, 'D', payload_size);
+
+    if (H5HG__insert_local_heapset(f, &decoded, payload_size, out,
+                                   &replacement_slot, &replacement_idx) < 0) {
+        H5_FAILED();
+        puts("    Unable to insert into decoded chunk-local heap set");
+        nerrors++;
+        goto error;
+    }
+
+    if (1 != replacement_slot || 0 == replacement_idx) {
+        H5_FAILED();
+        puts("    Decoded heap set did not restore the stable-slot hole");
+        nerrors++;
+    }
+
+    /* Re-encode the modified decoded heap set. */
+    if (H5HG__encode_local_heapset(f, decoded,
+                                   &image_2, &image_len_2) < 0) {
+        H5_FAILED();
+        puts("    Unable to re-encode decoded chunk-local heap set");
+        nerrors++;
+        goto error;
+    }
+
+    if (H5HG__free_local_heapset(decoded) < 0)
+        goto error;
+    decoded = NULL;
+
+    if (NULL == (decoded_2 =
+                     H5HG__decode_local_heapset(f, image_2, image_len_2))) {
+        H5_FAILED();
+        puts("    Unable to decode modified chunk-local heap set");
+        nerrors++;
+        goto error;
+    }
+
+    /*
+     * Verify all three live references after the second round trip.
+     */
+    for (u = 0; u < 3; u++) {
+        uint16_t slot;
+        uint16_t idx;
+        int      fill;
+
+        if (0 == u) {
+            slot = heap_slot[0];
+            idx  = obj_idx[0];
+            fill = 'A';
+        }
+        else if (1 == u) {
+            slot = replacement_slot;
+            idx  = replacement_idx;
+            fill = 'D';
+        }
+        else {
+            slot = heap_slot[2];
+            idx  = obj_idx[2];
+            fill = 'C';
+        }
+
+        memset(in, 0, payload_size);
+        buf_size = payload_size;
+
+        if (H5HG__read_local_heapset(f, decoded_2,
+                                     slot, idx, in, &buf_size) < 0) {
+            H5_FAILED();
+            puts("    Unable to read object after second heap-set decode");
+            nerrors++;
+        }
+        else {
+            memset(out, fill, payload_size);
+
+            if (memcmp(in, out, payload_size) != 0) {
+                H5_FAILED();
+                puts("    Heap-set payload did not survive second round trip");
+                nerrors++;
+            }
+        }
+    }
+
+    image   = H5MM_xfree(image);
+    image_2 = H5MM_xfree(image_2);
+
+    if (H5HG__free_local_heapset(decoded_2) < 0)
+        goto error;
+    decoded_2 = NULL;
+
+    free(out);
+    out = NULL;
+    free(in);
+    in = NULL;
+
+    if (H5Fclose(file) < 0)
+        goto error;
+    file = H5I_INVALID_HID;
+
+    if (nerrors)
+        goto error;
+
+    PASSED();
+    return 0;
+
+error:
+    if (heapset)
+        H5HG__free_local_heapset(heapset);
+
+    if (decoded)
+        H5HG__free_local_heapset(decoded);
+
+    if (decoded_2)
+        H5HG__free_local_heapset(decoded_2);
+
+    image   = H5MM_xfree(image);
+    image_2 = H5MM_xfree(image_2);
+
+    H5E_BEGIN_TRY
+    {
+        H5Fclose(file);
+    }
+    H5E_END_TRY
+
+    free(out);
+    free(in);
+
+    return MAX(1, nerrors);
+} /* end test_heapset_encode_decode() */
 
 /*-------------------------------------------------------------------------
  * Function:	main
@@ -1485,6 +2527,11 @@ main(void)
     nerrors += test_4_local(fapl_id);
     nerrors += test_ooo_indices_local(fapl_id);
     nerrors += test_encode_decode_local(fapl_id);
+
+    nerrors += test_heapset_basic(fapl_id);
+    nerrors += test_heapset_multiple_heaps(fapl_id);
+    nerrors += test_heapset_oversized(fapl_id);
+    nerrors += test_heapset_encode_decode(fapl_id);
 
     /* Verify symbol table messages are cached */
     nerrors += (h5_verify_cached_stabs(FILENAME, fapl_id) < 0 ? 1 : 0);

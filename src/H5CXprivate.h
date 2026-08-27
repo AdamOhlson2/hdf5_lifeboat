@@ -414,8 +414,5 @@ H5_DLL herr_t H5CX_test_set_mpio_coll_rank0_bcast(bool rank0_bcast);
 #endif /* H5_HAVE_INSTRUMENTED_LIBRARY */
 #endif /* H5_HAVE_PARALLEL */
 
-/* Variable-Length chunk-local fields */
-H5_DLL void   H5CX_set_vlen_chunk_ctx(void *ctx);
-H5_DLL herr_t H5CX_get_vlen_chunk_ctx(void **ctx);
 
 #endif /* H5CXprivate_H */

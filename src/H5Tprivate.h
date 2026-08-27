@@ -19,7 +19,7 @@
 /* Early typedefs to avoid circular dependencies */
 typedef struct H5T_t H5T_t;
 
-struct H5HG_heap_t;
+struct H5HG_local_heapset_t;
 
 /* Include package's public headers */
 #include "H5Tpublic.h"
@@ -76,31 +76,35 @@ typedef struct {
 } H5T_vlen_alloc_info_t;
 
 /*
- * Context for converting file-side VL descriptors that refer
- * to a chunk-local H5HG-style heap.
+ * Context for converting file-side VL descriptors that refer to the
+ * chunk-local H5HG heap set owned by one structured chunk.
  *
- * The context is installed only while one structured chunk is
- * being gathered or scattered. H5CX stores it as an opaque
- * pointer in the current thread's API context, while H5T interprets
- * the pointed-to object using this type.
+ * The context is installed only while that chunk is being processed.
+ * The initial single-threaded implementation stores the active context
+ * through H5T. The storage can later become thread-local without changing
+ * the callback interface.
  *
- * The heap is referenced through its structure tag here to avoid
- * requiring H5Tprivate.h to include H5HGprivate.h or to redeclare
- * H5HG_heap_t.
+ * HEAPSET is a pointer to the structured chunk's heap-set pointer. The
+ * extra level of indirection is required because the first write may create
+ * the heap set and later insertions may reallocate the heap-set manager.
  *
- * ref_nbytes is the number of bytes available after the four-byte
- * sequence length in each file-side VL descriptor. Version 1 encodes
- * a 16-bit local H5HG object index at the beginning of that field
- * and requires all remaining bytes to be zero.
+ * ref_nbytes is the number of bytes after the four-byte sequence length in
+ * each file-side VL descriptor. Version 1 uses the first four reference
+ * bytes as:
  *
- * H5CX and H5T do not own the file, heap pointer, or context object.
+ *     bytes 0-1: 16-bit stable heap-slot index
+ *     bytes 2-3: 16-bit H5HG object index
  *
- *                                       --AZO   07/20/26
+ * Any remaining reference bytes are reserved and encoded as zero.
+ *
+ * H5T does not own the file, heap set, or context object.
+ *
+ *                                       --AZO   08/25/26
  */
 typedef struct H5T_vlen_chunk_ctx_t {
-    H5F_t               *f;          /* File whose encoding parameters apply */
-    struct H5HG_heap_t **heap;       /* Current structured chunk's local heap */
-    size_t               ref_nbytes; /* Size of descriptor reference field */
+    H5F_t                        *f;          /* File whose encoding parameters apply */
+    struct H5HG_local_heapset_t **heapset;    /* Current structured chunk's heap set */
+    size_t                        ref_nbytes; /* Size of descriptor reference field */
 } H5T_vlen_chunk_ctx_t;
 
 /* Forward declarations for prototype arguments */
@@ -152,6 +156,13 @@ H5_DLL htri_t             H5T_is_vl_storage(const H5T_t *dt);
 H5_DLL herr_t H5T_invoke_vol_optional(H5T_t *dt, H5VL_optional_args_t *args, hid_t dxpl_id, void **req,
                                       H5VL_object_t **vol_obj_ptr);
 H5_DLL bool   H5T_is_numeric_with_unusual_unused_bits(const H5T_t *dt);
+
+/*
+ * Install the chunk-local VL context used by H5T conversion callbacks.
+ * Returns the previously active context so that it can be restored after
+ * the conversion completes.
+ */
+H5_DLL const H5T_vlen_chunk_ctx_t *H5T_set_vlen_chunk_ctx(const H5T_vlen_chunk_ctx_t *ctx);
 
 /* Reference specific functions */
 H5_DLL H5R_type_t H5T_get_ref_type(const H5T_t *dt);
