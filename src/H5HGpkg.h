@@ -118,8 +118,8 @@ H5FL_BLK_EXTERN(gheap_chunk);
  * "HGLS" is the current proposed four-byte V1 signature. It is a new
  * heap-set format marker, not the existing H5HG collection signature.
  */
-#define H5HG_LOCAL_HEAPSET_MAGIC     "HGLS"
-#define H5HG_LOCAL_HEAPSET_VERSION   1
+#define H5HG_LOCAL_HEAPSET_MAGIC   "HGLS"
+#define H5HG_LOCAL_HEAPSET_VERSION 1
 
 /*
  * V1 reserves three bytes after the version field. This mirrors the
@@ -132,7 +132,7 @@ H5FL_BLK_EXTERN(gheap_chunk);
  * Fixed V1 heap-set header:
  *     magic + version + reserved bytes + 32-bit stable-slot count.
  */
-#define H5HG_LOCAL_HEAPSET_SIZEOF_HDR                                                                    \
+#define H5HG_LOCAL_HEAPSET_SIZEOF_HDR                                                                        \
     ((size_t)(H5_SIZEOF_MAGIC + 1 + H5HG_LOCAL_HEAPSET_NRESERVED + sizeof(uint32_t)))
 
 /*

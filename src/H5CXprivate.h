@@ -414,5 +414,4 @@ H5_DLL herr_t H5CX_test_set_mpio_coll_rank0_bcast(bool rank0_bcast);
 #endif /* H5_HAVE_INSTRUMENTED_LIBRARY */
 #endif /* H5_HAVE_PARALLEL */
 
-
 #endif /* H5CXprivate_H */

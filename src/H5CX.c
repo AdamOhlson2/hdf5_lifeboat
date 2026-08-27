@@ -3427,4 +3427,3 @@ H5CX_pop(bool update_dxpl_props)
 done:
     FUNC_LEAVE_NOAPI(ret_value)
 } /* end H5CX_pop() */
-

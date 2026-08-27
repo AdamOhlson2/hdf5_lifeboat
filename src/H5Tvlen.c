@@ -1173,24 +1173,20 @@ H5T__vlen_chunk_get_ctx(const H5T_vlen_chunk_ctx_t **ctx)
     *ctx = H5T_vlen_chunk_ctx_g;
 
     if (NULL == *ctx)
-        HGOTO_ERROR(H5E_DATATYPE, H5E_UNINITIALIZED, FAIL,
-                    "chunk-local VL context is not active");
+        HGOTO_ERROR(H5E_DATATYPE, H5E_UNINITIALIZED, FAIL, "chunk-local VL context is not active");
 
     if (NULL == (*ctx)->f)
-        HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL,
-                    "chunk-local VL context has no file");
+        HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL, "chunk-local VL context has no file");
 
     /*
-    * The chunk must provide an owning heap-set pointer. The heap set itself
-    * may still be NULL because it is created lazily by the first insertion.
-    */
+     * The chunk must provide an owning heap-set pointer. The heap set itself
+     * may still be NULL because it is created lazily by the first insertion.
+     */
     if (NULL == (*ctx)->heapset)
-        HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL,
-                    "chunk-local VL context has no heap-set pointer");
+        HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL, "chunk-local VL context has no heap-set pointer");
 
     if ((*ctx)->ref_nbytes < H5T_VLEN_CHUNK_REF_SIZE)
-        HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL,
-                    "chunk-local VL reference field is too small");
+        HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL, "chunk-local VL reference field is too small");
 
 done:
     if (ret_value < 0)
@@ -1219,8 +1215,8 @@ done:
  *-------------------------------------------------------------------------
  */
 static herr_t
-H5T__vlen_chunk_ref_decode(const H5T_vlen_chunk_ctx_t *ctx, const uint8_t *ref,
-                           uint16_t *heap_slot, uint16_t *obj_idx)
+H5T__vlen_chunk_ref_decode(const H5T_vlen_chunk_ctx_t *ctx, const uint8_t *ref, uint16_t *heap_slot,
+                           uint16_t *obj_idx)
 {
     const uint8_t *p = ref;
     uint16_t       slot16;
@@ -1239,8 +1235,7 @@ H5T__vlen_chunk_ref_decode(const H5T_vlen_chunk_ctx_t *ctx, const uint8_t *ref,
     *obj_idx   = 0;
 
     if (ctx->ref_nbytes < H5T_VLEN_CHUNK_REF_SIZE)
-        HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL,
-                    "chunk-local VL reference field is too small");
+        HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL, "chunk-local VL reference field is too small");
 
     UINT16DECODE(p, slot16);
     UINT16DECODE(p, idx16);
@@ -1256,8 +1251,7 @@ H5T__vlen_chunk_ref_decode(const H5T_vlen_chunk_ctx_t *ctx, const uint8_t *ref,
      * normal stable heap slot, so {0, nonzero} is valid.
      */
     if ((0 == idx16) && (0 != slot16))
-        HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL,
-                    "chunk-local VL descriptor has invalid null reference");
+        HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL, "chunk-local VL descriptor has invalid null reference");
 
     *heap_slot = slot16;
     *obj_idx   = idx16;
@@ -1343,8 +1337,7 @@ H5T__vlen_chunk_ref_isnull(const H5T_vlen_chunk_ctx_t *ctx, const uint8_t *ref, 
     *isnull = false;
 
     if (H5T__vlen_chunk_ref_decode(ctx, ref, &heap_slot, &obj_idx) < 0)
-        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTDECODE, FAIL,
-                    "unable to decode chunk-local VL reference");
+        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTDECODE, FAIL, "unable to decode chunk-local VL reference");
 
     *isnull = ((0 == heap_slot) && (0 == obj_idx));
 
@@ -1421,8 +1414,7 @@ H5T__vlen_chunk_isnull(const H5VL_object_t H5_ATTR_UNUSED *file, void *_vl, bool
     *isnull = false;
 
     if (H5T__vlen_chunk_get_ctx(&ctx) < 0)
-        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTGET, FAIL,
-                    "unable to retrieve chunk-local VL context");
+        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTGET, FAIL, "unable to retrieve chunk-local VL context");
 
     UINT32DECODE(p, seq_len);
 
@@ -1477,10 +1469,10 @@ H5T__vlen_chunk_setnull(H5VL_object_t H5_ATTR_UNUSED *file, void *_vl, void *_bg
         HGOTO_ERROR(H5E_DATATYPE, H5E_CANTGET, FAIL, "unable to retrieve chunk-local VL context");
 
     /*
-    * Release the object referenced by the old destination before publishing
-    * the null descriptor. Once the descriptor is cleared, that object could
-    * no longer be located for deletion.
-    */
+     * Release the object referenced by the old destination before publishing
+     * the null descriptor. Once the descriptor is cleared, that object could
+     * no longer be located for deletion.
+     */
     if (_bg)
         if (H5T__vlen_chunk_delete(file, _bg) < 0)
             HGOTO_ERROR(H5E_DATATYPE, H5E_CANTREMOVE, FAIL,
@@ -1540,29 +1532,24 @@ H5T__vlen_chunk_read(H5VL_object_t H5_ATTR_UNUSED *file, void *_vl, void *_buf, 
     assert(vl);
 
     if (H5T__vlen_chunk_get_ctx(&ctx) < 0)
-        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTGET, FAIL,
-                    "unable to retrieve chunk-local VL context");
+        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTGET, FAIL, "unable to retrieve chunk-local VL context");
 
     if (H5T__vlen_chunk_ref_decode(ctx, vl + 4, &heap_slot, &obj_idx) < 0)
-        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTDECODE, FAIL,
-                    "unable to decode chunk-local VL reference");
+        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTDECODE, FAIL, "unable to decode chunk-local VL reference");
 
     if (0 == obj_idx)
-        HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL,
-                    "cannot read through a null chunk-local VL reference");
+        HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL, "cannot read through a null chunk-local VL reference");
 
     if (NULL == *ctx->heapset)
         HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL,
                     "chunk-local VL descriptor refers to a missing heap set");
 
     /*
-    * Validate the stored object size before touching the destination buffer.
-    * A NULL destination requests only the object's logical size.
-    */
-    if (H5HG__read_local_heapset(ctx->f, *ctx->heapset, heap_slot, obj_idx,
-                                 NULL, &obj_size) < 0)
-        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTGET, FAIL,
-                    "unable to retrieve chunk-local VL object size");
+     * Validate the stored object size before touching the destination buffer.
+     * A NULL destination requests only the object's logical size.
+     */
+    if (H5HG__read_local_heapset(ctx->f, *ctx->heapset, heap_slot, obj_idx, NULL, &obj_size) < 0)
+        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTGET, FAIL, "unable to retrieve chunk-local VL object size");
 
     if (obj_size != len)
         HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL,
@@ -1576,13 +1563,10 @@ H5T__vlen_chunk_read(H5VL_object_t H5_ATTR_UNUSED *file, void *_vl, void *_buf, 
         HGOTO_DONE(SUCCEED);
 
     if (NULL == _buf)
-        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL,
-                    "chunk-local VL read requires a destination buffer");
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL, "chunk-local VL read requires a destination buffer");
 
-    if (H5HG__read_local_heapset(ctx->f, *ctx->heapset, heap_slot, obj_idx,
-                                 _buf, &read_size) < 0)
-        HGOTO_ERROR(H5E_DATATYPE, H5E_READERROR, FAIL,
-                    "unable to read chunk-local VL object");
+    if (H5HG__read_local_heapset(ctx->f, *ctx->heapset, heap_slot, obj_idx, _buf, &read_size) < 0)
+        HGOTO_ERROR(H5E_DATATYPE, H5E_READERROR, FAIL, "unable to read chunk-local VL object");
 
     assert(read_size == len);
 
@@ -1593,7 +1577,7 @@ done:
 
 /*-------------------------------------------------------------------------
  * Function:    H5T__vlen_chunk_write
- *    
+ *
  * Purpose:     Stores a VL payload in the current structured chunk's H5HG
  *              heap set and publishes the corresponding file-side
  *              descriptor.
@@ -1623,9 +1607,8 @@ done:
  */
 static herr_t
 H5T__vlen_chunk_write(H5VL_object_t H5_ATTR_UNUSED               *file,
-                      const H5T_vlen_alloc_info_t H5_ATTR_UNUSED *vl_alloc_info,
-                      void *_vl, void *_buf, void *_bg, size_t seq_len,
-                      size_t base_size)
+                      const H5T_vlen_alloc_info_t H5_ATTR_UNUSED *vl_alloc_info, void *_vl, void *_buf,
+                      void *_bg, size_t seq_len, size_t base_size)
 {
     const H5T_vlen_chunk_ctx_t *ctx          = NULL;
     uint8_t                    *vl           = (uint8_t *)_vl;
@@ -1641,20 +1624,16 @@ H5T__vlen_chunk_write(H5VL_object_t H5_ATTR_UNUSED               *file,
     assert(vl);
 
     if ((seq_len > 0) && (NULL == _buf))
-        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL,
-                    "non-empty chunk-local VL value has no source buffer");
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL, "non-empty chunk-local VL value has no source buffer");
 
     if (H5T__vlen_chunk_get_ctx(&ctx) < 0)
-        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTGET, FAIL,
-                    "unable to retrieve chunk-local VL context");
+        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTGET, FAIL, "unable to retrieve chunk-local VL context");
 
     if (seq_len > UINT32_MAX)
-        HGOTO_ERROR(H5E_DATATYPE, H5E_OVERFLOW, FAIL,
-                    "VL sequence length does not fit in descriptor");
+        HGOTO_ERROR(H5E_DATATYPE, H5E_OVERFLOW, FAIL, "VL sequence length does not fit in descriptor");
 
     if ((base_size > 0) && (seq_len > (SIZE_MAX / base_size)))
-        HGOTO_ERROR(H5E_DATATYPE, H5E_OVERFLOW, FAIL,
-                    "chunk-local VL payload size overflows size_t");
+        HGOTO_ERROR(H5E_DATATYPE, H5E_OVERFLOW, FAIL, "chunk-local VL payload size overflows size_t");
 
     payload_size = seq_len * base_size;
 
@@ -1662,17 +1641,15 @@ H5T__vlen_chunk_write(H5VL_object_t H5_ATTR_UNUSED               *file,
      * Let the heap-set manager select or create the appropriate member heap.
      * SIZE == 0 is valid and creates a real zero-length H5HG object.
      */
-    if (H5HG__insert_local_heapset(ctx->f, ctx->heapset, payload_size, _buf,
-                                   &heap_slot, &obj_idx) < 0)
-        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTINSERT, FAIL,
-                    "unable to insert chunk-local VL object");
+    if (H5HG__insert_local_heapset(ctx->f, ctx->heapset, payload_size, _buf, &heap_slot, &obj_idx) < 0)
+        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTINSERT, FAIL, "unable to insert chunk-local VL object");
 
     inserted = true;
 
     /*
-    * Object index zero is reserved for the null reference. Heap slot zero is
-    * the first normal member heap and is therefore valid for a live object.
-    */
+     * Object index zero is reserved for the null reference. Heap slot zero is
+     * the first normal member heap and is therefore valid for a live object.
+     */
     if (0 == obj_idx)
         HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL,
                     "chunk-local heap set returned reserved object index zero");
@@ -1704,8 +1681,7 @@ done:
      * object. The outer heap-set manager remains owned by the chunk.
      */
     if ((ret_value < 0) && inserted && ctx && ctx->heapset && *ctx->heapset)
-        if (H5HG__remove_local_heapset(ctx->f, *ctx->heapset,
-                                      heap_slot, obj_idx) < 0)
+        if (H5HG__remove_local_heapset(ctx->f, *ctx->heapset, heap_slot, obj_idx) < 0)
             HDONE_ERROR(H5E_DATATYPE, H5E_CANTREMOVE, FAIL,
                         "unable to remove unreferenced chunk-local VL object");
 
@@ -1752,18 +1728,15 @@ H5T__vlen_chunk_delete(H5VL_object_t H5_ATTR_UNUSED *file, void *_vl)
     FUNC_ENTER_PACKAGE
 
     if (NULL == p)
-        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL,
-                    "chunk-local VL delete requires a descriptor");
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL, "chunk-local VL delete requires a descriptor");
 
     if (H5T__vlen_chunk_get_ctx(&ctx) < 0)
-        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTGET, FAIL,
-                    "unable to retrieve chunk-local VL context");
+        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTGET, FAIL, "unable to retrieve chunk-local VL context");
 
     UINT32DECODE(p, seq_len);
 
     if (H5T__vlen_chunk_ref_decode(ctx, p, &heap_slot, &obj_idx) < 0)
-        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTDECODE, FAIL,
-                    "unable to decode chunk-local VL reference");
+        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTDECODE, FAIL, "unable to decode chunk-local VL reference");
 
     /*
      * {0,0} is valid only for a zero-length null descriptor.
@@ -1780,10 +1753,8 @@ H5T__vlen_chunk_delete(H5VL_object_t H5_ATTR_UNUSED *file, void *_vl)
         HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL,
                     "chunk-local VL descriptor refers to a missing heap set");
 
-    if (H5HG__remove_local_heapset(ctx->f, *ctx->heapset,
-                                   heap_slot, obj_idx) < 0)
-        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTREMOVE, FAIL,
-                    "unable to remove chunk-local VL object");
+    if (H5HG__remove_local_heapset(ctx->f, *ctx->heapset, heap_slot, obj_idx) < 0)
+        HGOTO_ERROR(H5E_DATATYPE, H5E_CANTREMOVE, FAIL, "unable to remove chunk-local VL object");
 
 done:
     FUNC_LEAVE_NOAPI(ret_value)
@@ -1918,9 +1889,9 @@ H5T_patch_vlen_chunk_local(H5T_t *dt, size_t ref_nbytes)
     assert(dt->shared);
 
     /*
-    * V1 requires four reference bytes: two for the stable member-heap slot
-    * and two for the per-heap H5HG object index.
-    */
+     * V1 requires four reference bytes: two for the stable member-heap slot
+     * and two for the per-heap H5HG object index.
+     */
     if (ref_nbytes < H5T_VLEN_CHUNK_REF_SIZE)
         HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL, "chunk-local VL reference field is too small");
 
@@ -1971,9 +1942,9 @@ H5T_set_vlen_chunk_ctx(const H5T_vlen_chunk_ctx_t *ctx)
 
     FUNC_ENTER_NOAPI_NOINIT_NOERR
 
-    old_ctx                 = H5T_vlen_chunk_ctx_g;
-    H5T_vlen_chunk_ctx_g    = ctx;
+    old_ctx              = H5T_vlen_chunk_ctx_g;
+    H5T_vlen_chunk_ctx_g = ctx;
 
-    FUNC_LEAVE_NOAPI(old_ctx) 
-    
+    FUNC_LEAVE_NOAPI(old_ctx)
+
 } /* end H5T_set_vlen_chunk_ctx() */
