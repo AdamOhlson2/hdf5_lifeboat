@@ -1213,6 +1213,8 @@ H5F__new(H5F_shared_t *shared, unsigned flags, hid_t fcpl_id, hid_t fapl_id, H5F
             HGOTO_ERROR(H5E_ARGS, H5E_BADTYPE, NULL, "not file access property list");
         if (H5P_get(plist, H5F_ACS_META_CACHE_INIT_CONFIG_NAME, &(f->shared->mdc_initCacheCfg)) < 0)
             HGOTO_ERROR(H5E_PLIST, H5E_CANTGET, NULL, "can't get initial metadata cache resize config");
+        if (H5P_get(plist, H5F_ACS_SCC_INIT_CONFIG_NAME, &(f->shared->scc_initCfg)) < 0)
+            HGOTO_ERROR(H5E_PLIST, H5E_CANTGET, NULL, "can't get initial shared chunk cache config");
         if (H5P_get(plist, H5F_ACS_DATA_CACHE_NUM_SLOTS_NAME, &(f->shared->rdcc_nslots)) < 0)
             HGOTO_ERROR(H5E_PLIST, H5E_CANTGET, NULL, "can't get data cache number of slots");
         if (H5P_get(plist, H5F_ACS_DATA_CACHE_BYTE_SIZE_NAME, &(f->shared->rdcc_nbytes)) < 0)
@@ -1349,8 +1351,8 @@ H5F__new(H5F_shared_t *shared, unsigned flags, hid_t fcpl_id, hid_t fapl_id, H5F
         if (H5AC_create(f, &(f->shared->mdc_initCacheCfg), &(f->shared->mdc_initCacheImageCfg)) < 0)
             HGOTO_ERROR(H5E_FILE, H5E_CANTINIT, NULL, "unable to create metadata cache");
 
-        /* Create a shaerd chunk cache */
-        if (NULL == (f->shared->shared_cache = H5SC_create(f, plist)))
+        /* Create a shared chunk cache */
+        if (NULL == (f->shared->shared_cache = H5SC_create(f, plist, &(f->shared->scc_initCfg))))
             HGOTO_ERROR(H5E_FILE, H5E_CANTINIT, NULL, "unable to create shared chunk cache");
 
         /* Create the file's "open object" information */

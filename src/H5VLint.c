@@ -2892,3 +2892,54 @@ H5VL_conn_prop_get_cap_flags(const H5VL_connector_prop_t *connector_prop, uint64
 done:
     FUNC_LEAVE_NOAPI(ret_value)
 } /* end H5VL_conn_prop_get_cap_flags() */
+
+/******************************************************************************
+ *
+ * Function:    H5VL__get_file_shared_cache
+ *
+ * Purpose:
+ *   Retrieve the opaque pointer to the Shared Chunk Cache instance
+ *   associated with a file VOL object. This helper unwraps the native file
+ *   object stored in the VOL wrapper and returns the file's SCC pointer
+ *   without exposing the native H5F_t pointer to the caller.
+ *
+ *   Used exclusively for testing and implementation validation.
+ *
+ * Inputs:
+ *   const H5VL_object_t *file_vol_obj
+ *       File VOL object to unwrap.
+ *
+ *   void **cache
+ *       Output pointer that will be set to the SCC instance associated with
+ *       the underlying file on success.
+ *
+ * Returns:
+ *   SUCCEED on success;
+ *   FAIL on failure.
+ *
+ ******************************************************************************/
+herr_t
+H5VL__get_file_shared_cache(const H5VL_object_t *file_vol_obj, void **cache)
+{
+    herr_t ret_value = SUCCEED;
+    H5F_t *file      = NULL;
+
+    FUNC_ENTER_PACKAGE
+
+    assert(file_vol_obj);
+    assert(cache);
+
+    *cache = NULL;
+
+    if (NULL == file_vol_obj->data)
+        HGOTO_ERROR(H5E_VOL, H5E_CANTGET, FAIL, "file VOL object has no underlying object");
+
+    /* Assumes native VOL-backed file object */
+    file = (H5F_t *)file_vol_obj->data;
+
+    if (NULL == (*cache = (void *)H5F_SHARED_CACHE(file)))
+        HGOTO_ERROR(H5E_VOL, H5E_CANTGET, FAIL, "file does not have an SCC instance");
+
+done:
+    FUNC_LEAVE_NOAPI(ret_value)
+} /* end H5VL__get_file_shared_cache() */

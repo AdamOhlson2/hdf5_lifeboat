@@ -37,7 +37,7 @@
 /****************/
 /* Module Setup */
 /****************/
-
+#define H5D_FRIEND
 #include "H5Dmodule.h" /* This source code file is part of the H5D module */
 #define H5SC_FRIEND    /*suppress error about including H5SCpkg    */
 
@@ -50,14 +50,14 @@
 #endif                   /* H5_HAVE_PARALLEL */
 #include "H5CXprivate.h" /* API Contexts                         */
 #include "H5Dpkg.h"      /* Dataset functions            */
-#include "H5SCpkg.h"     /* Shared chunk cache functions            */
 #include "H5Eprivate.h"  /* Error handling              */
-#include "H5Fprivate.h"  /* File functions            */
 #include "H5FLprivate.h" /* Free Lists                           */
+#include "H5Fprivate.h"  /* File functions            */
 #include "H5Iprivate.h"  /* IDs                      */
-#include "H5MMprivate.h" /* Memory management            */
 #include "H5MFprivate.h" /* File memory management               */
+#include "H5MMprivate.h" /* Memory management            */
 #include "H5PBprivate.h" /* Page Buffer	                         */
+#include "H5SCpkg.h"     /* Shared chunk cache functions            */
 #include "H5SLprivate.h" /* Skip Lists                               */
 #include "H5VMprivate.h" /* Vector and array functions        */
 
@@ -127,7 +127,7 @@ static herr_t H5D__struct_chunk_set_info_real(H5O_layout_struct_chunk_t *layout,
 static herr_t H5D__struct_chunk_lookup(H5D_t *dset, size_t count, const hsize_t *scaled[] /*in*/,
                                        haddr_t *addr[] /*out*/, hsize_t *size[] /*out*/,
                                        hsize_t *defined_values_size[] /*out*/, size_t *size_hint[] /*out*/,
-                                       size_t *defined_values_size_hint[] /*out*/, void **udata[] /*out*/);
+                                       size_t *defined_values_size_hint[] /*out*/, void **udata /*out*/);
 
 static herr_t H5D__struct_chunk_decode(H5D_t *dset, size_t *nbytes /*in,out*/, size_t *alloc_size /*in,out*/,
                                        bool partial_bound, void **chunk /*in,out*/, void *udata);
@@ -205,7 +205,7 @@ const H5D_layout_ops_t H5D_LOPS_STRUCT_CHUNK[1] = {{
     H5D__struct_chunk_construct,      /* construct */
     H5D__struct_chunk_init,           /* init */
     H5D__struct_chunk_is_space_alloc, /* is_space_alloc */
-    NULL,                             /* is_data_cached */
+    H5D__struct_chunk_is_data_cached, /* is_data_cached */
     H5D__struct_chunk_io_init,        /* io_init */
     H5D__struct_chunk_mdio_init,      /* mdio_init */
     NULL,                             /* ser_read */
@@ -907,6 +907,39 @@ H5D__struct_chunk_is_space_alloc(const H5O_storage_t *store)
 } /* end H5D__struct_chunk_is_space_alloc() */
 
 /*-------------------------------------------------------------------------
+ * Function:    H5D__struct_chunk_is_data_cached
+ *
+ * Purpose:     Indicate that structured-chunk reads must proceed through
+ *              the shared chunk cache even when the persistent chunk index
+ *              has not yet been allocated.
+ *
+ *              With write-back caching, SCC may contain authoritative dirty
+ *              resident chunks that are not represented by the on-disk
+ *              structured-chunk index. SCC also handles true sparse misses
+ *              and supplies the appropriate fill-value representation.
+ *
+ * Return:      true
+ *-------------------------------------------------------------------------
+ */
+bool
+H5D__struct_chunk_is_data_cached(const H5D_shared_t H5_ATTR_UNUSED *shared)
+{
+    FUNC_ENTER_PACKAGE_NOERR
+
+    assert(shared);
+    assert(shared->layout.type == H5D_STRUCT_CHUNK);
+    assert(shared->layout.sc_ops);
+
+    /*
+     * This callback is used by H5D__read() as a routing decision, not as a
+     * per-selection cache-hit query. Structured-chunk reads must reach SCC
+     * because resident write-back state may exist without persistent index
+     * allocation.
+     */
+    FUNC_LEAVE_NOAPI(true)
+}
+
+/*-------------------------------------------------------------------------
  * Function:    H5D__struct_chunk_allocated_cb
  *
  * Purpose:    Simply counts the number of chunks for a dataset.
@@ -1128,6 +1161,11 @@ done:
  *             I/O.  Currently looks up chunk addresses and adds chunks to
  *             sel_pieces.
  *
+ *             Only the on-disk chunk address is required from the
+ *             structured-chunk lookup callback. Layout-specific lookup
+ *             udata is therefore not requested and remains internal to
+ *             H5D__struct_chunk_lookup().
+ *
  * Return:     Non-negative on success/Negative on failure
  *
  *-------------------------------------------------------------------------
@@ -1137,7 +1175,6 @@ H5D__struct_chunk_mdio_init(H5D_io_info_t *io_info, H5D_dset_io_info_t *dinfo)
 {
     H5SL_node_t      *piece_node; /* Current node in chunk skip list */
     H5D_piece_info_t *piece_info; /* Piece information for current piece */
-    H5D_chunk_ud_t  **udata[1];   /* Chunk data from index */
     haddr_t          *addr[1];
     const hsize_t    *scaled[1];
     herr_t            ret_value = SUCCEED; /* Return value */
@@ -1158,8 +1195,7 @@ H5D__struct_chunk_mdio_init(H5D_io_info_t *io_info, H5D_dset_io_info_t *dinfo)
         scaled[0] = piece_info->scaled;
         addr[0]   = &piece_info->faddr;
 
-        if (H5D__struct_chunk_lookup(dinfo->dset, 1, scaled, addr, NULL, NULL, NULL, NULL, (void ***)udata) <
-            0)
+        if (H5D__struct_chunk_lookup(dinfo->dset, 1, scaled, addr, NULL, NULL, NULL, NULL, NULL) < 0)
             HGOTO_ERROR(H5E_DATASET, H5E_CANTGET, FAIL, "error looking up chunk address");
 
         /* Add piece to MDIO operation if it has a file address */
@@ -1290,45 +1326,83 @@ done:
  *
  * Purpose:     Looks up chunk address and size on disk.
  *
- *              defined_values_size is the number of bytes to read if only
- *              the list of defined values is needed.
+ *              dset is the pointer to the dataset being operated on.
  *
- *              size_hint is the suggested allocation size for the chunk
- *              (could be larger if the chunk might expand when decoded).
+ *              count is the number of chunks in this I/O request
  *
- *              defined_values_size_hint is the suggested allocation size if only
- *              the list of defined values is needed.
- *              If *defined_values_size is returned as 0, then all values
- *              are defined for the chunk.
- *              In this case, the chunk may still be decoded without reading
- *              from disk, by allocating a buffer of size defined_valued_size_hint and
- *              passing it to H5SC_chunk_decode_t with *nbytes_used set to 0.
+ *              scaled is an array of the scaled coordinates of the chunks in this I/O request
  *
- *              *udata can be set to anything and will be passed through to
- *              H5SC_chunk_decode_t and/or the selection or vector I/O routines,
- *              (we will create an H5SC_free_udata_t callback if necessary).
+ *              Each output array other than scaled is independently optional.
+ *              A NULL output array, or a NULL element within one of the scalar
+ *              output arrays, indicates that the corresponding value is not
+ *              requested by the caller.
+ *
+ *              addr is an array of addresses of the on-disk chunk(s) (if available)
+ *
+ *              size is an array of encoded on-disk chunk sizes. For a chunk
+ *              that is not allocated on disk, the returned size is 0.
+ *
+ *             defined_values_size is the number of encoded bytes occupied by
+ *              the defined-value selection metadata at the beginning of the
+ *              on-disk structured chunk.
+ *
+ *              For an allocated chunk, a returned value of 0 indicates that
+ *              no separate defined-value selection metadata is stored and all
+ *              values in the logical chunk are defined.
+ *
+ *              For an unallocated chunk, the chunk address is HADDR_UNDEF and
+ *              defined_values_size is also returned as 0.
+ *
+ *              size_hint is the allocation size required for the encoded
+ *              on-disk chunk buffer used by the raw read/decode path. The
+ *              current implementation returns the encoded chunk size. It is
+ *              not an estimate of the complete decoded resident allocation.
+ *
+ *              defined_values_size_hint is the allocation size required to
+ *              read the encoded defined-values selection metadata. The
+ *              current implementation returns defined_values_size. It is a
+ *              byte size, not a defined-element count or decoded resident
+ *              allocation.
+ *
+ *              A zero defined_values_size for an allocated chunk is a fast-path
+ *              indication that all values are defined; no selection metadata
+ *              needs to be read or passed to decode_defined_values().
+ *
+ *              _udata is an optional array of layout-specific output pointers.
+ *              When supplied, each returned H5D_chunk_ud_t contains the lookup
+ *              state required by subsequent structured-chunk callbacks such as
+ *              decode, encode, insert, and vector I/O.
+ *
+ *              Ownership of each returned udata pointer is transferred to the
+ *              caller. If _udata is NULL, this function retains ownership of
+ *              its temporary lookup udata and releases it before returning,
+ *              including on an error path.
+ *
+ *              If the structured-chunk index has not yet been allocated,
+ *              lookup succeeds without opening the index. Each requested
+ *              chunk is reported as unallocated with HADDR_UNDEF and zero
+ *              sizes.
  *
  * Return:      Non-negative on success/Negative on failure
  *
  *-------------------------------------------------------------------------
  */
 static herr_t
-H5D__struct_chunk_lookup(H5D_t *dset, size_t count, const hsize_t *scaled[] /*in*/, haddr_t *addr[] /*out*/,
-
-                         hsize_t *size[] /*out*/, hsize_t *defined_values_size[] /*out*/,
-
-                         size_t *size_hint[] /*out*/, size_t *defined_values_size_hint[] /*out*/,
-
-                         void **_udata[] /*out*/)
+H5D__struct_chunk_lookup(H5D_t *dset /*in*/, size_t count /*in*/, const hsize_t *scaled[] /*in*/,
+                         haddr_t *addr[] /*out*/, hsize_t *size[] /*out*/,
+                         hsize_t *defined_values_size[] /*out*/, size_t *size_hint[] /*out*/,
+                         size_t *defined_values_size_hint[] /*out*/, void **_udata /*out*/)
 {
-    H5D_chunk_ud_t             *udata;
+    H5D_chunk_ud_t             *udata   = NULL;
     H5O_storage_struct_chunk_t *storage = &(dset->shared->layout.storage.u.struct_chunk);
     H5O_layout_struct_chunk_t  *layout  = &dset->shared->layout.u.struct_chunk;
     H5D_chk_idx_info_t          idx_info; /* Chunked index info */
     H5O_stc_pline_t            *pline;    /* I/O pipeline info */
-    hbool_t                     filtered        = false;
-    size_t                      tot_unfilt_size = 0;
     size_t                      i;
+    haddr_t                     found_addr;
+    hsize_t                     found_size;
+    hsize_t                     found_defined_size;
+    bool                        index_allocated;
     herr_t                      ret_value = SUCCEED; /* Return value */
 
     FUNC_ENTER_PACKAGE
@@ -1338,8 +1412,6 @@ H5D__struct_chunk_lookup(H5D_t *dset, size_t count, const hsize_t *scaled[] /*in
     assert(dset->shared->layout.type == H5D_STRUCT_CHUNK);
 
     pline = &(dset->shared->dcpl_cache.stc_pline);
-    if (pline && pline->tot_filt_nsects)
-        filtered = true;
 
     /* Compose chunked index info struct */
     idx_info.f           = dset->oloc.file;
@@ -1347,12 +1419,14 @@ H5D__struct_chunk_lookup(H5D_t *dset, size_t count, const hsize_t *scaled[] /*in
     idx_info.stc_layout  = layout;
     idx_info.stc_storage = storage;
 
-    for (i = 0; i < count; i++) {
+    index_allocated = (storage->ops->is_space_alloc)(storage);
 
-        /* Allocate udata */
-        udata = (H5D_chunk_ud_t *)H5MM_malloc(sizeof(H5D_chunk_ud_t));
-        if (udata == NULL)
-            HGOTO_ERROR(H5E_ARGS, H5E_CANTALLOC, FAIL, "could not malloc space for udata");
+    for (i = 0; i < count; i++) {
+        udata = NULL;
+
+        /* Allocate zero-initialized udata */
+        if (NULL == (udata = H5MM_calloc(sizeof(H5D_chunk_ud_t))))
+            HGOTO_ERROR(H5E_ARGS, H5E_CANTALLOC, FAIL, "could not allocate space for chunk lookup udata");
 
         /* Set up udata */
         udata->common.stc_layout  = layout;
@@ -1363,33 +1437,65 @@ H5D__struct_chunk_lookup(H5D_t *dset, size_t count, const hsize_t *scaled[] /*in
         udata->chunk_block.offset = HADDR_UNDEF;
         udata->chunk_block.length = 0;
 
-        /* chunk_idx is calculated in get_addr callback */
-        if ((storage->ops->get_addr)(&idx_info, udata) < 0)
-            HGOTO_ERROR(H5E_DATASET, H5E_CANTGET, FAIL, "can't query chunk address");
-
-        if (H5_addr_defined(udata->chunk_block.offset)) {
-
-            if (addr[i])
-                *addr[i] = udata->chunk_block.offset;
-            if (size[i])
-                *size[i] = udata->chunk_block.length;
-            if (size_hint[i])
-                *size_hint[i] = *size[i];
-            if (defined_values_size[i])
-                *defined_values_size[i] = udata->offset[1];
-            if (defined_values_size_hint[i])
-                *defined_values_size_hint[i] = *defined_values_size[i];
-        }
-        else {
-
-            *addr[i] = HADDR_UNDEF;
+        /*
+         * If the structured-chunk index has never been allocated, no
+         * logical chunk can have on-disk storage. Leave the chunk address
+         * undefined rather than invoking get_addr(), since some index
+         * implementations require an allocated index address.
+         */
+        if (index_allocated) {
+            /* chunk_idx is calculated in get_addr callback */
+            if ((storage->ops->get_addr)(&idx_info, udata) < 0)
+                HGOTO_ERROR(H5E_DATASET, H5E_CANTGET, FAIL, "can't query chunk address");
         }
 
-        _udata[i] = (void *)udata;
+        found_addr         = udata->chunk_block.offset;
+        found_size         = 0;
+        found_defined_size = 0;
+
+        if (H5_addr_defined(found_addr)) {
+            found_size         = udata->chunk_block.length;
+            found_defined_size = udata->offset[1];
+        }
+
+        /* Each output is independently optional. */
+        if (addr && addr[i])
+            *addr[i] = found_addr;
+
+        if (size && size[i])
+            *size[i] = found_size;
+
+        if (defined_values_size && defined_values_size[i])
+            *defined_values_size[i] = found_defined_size;
+
+        if (size_hint && size_hint[i]) {
+            H5_CHECK_OVERFLOW(found_size, hsize_t, size_t);
+            *size_hint[i] = (size_t)found_size;
+        }
+
+        if (defined_values_size_hint && defined_values_size_hint[i]) {
+            H5_CHECK_OVERFLOW(found_defined_size, hsize_t, size_t);
+            *defined_values_size_hint[i] = (size_t)found_defined_size;
+        }
+
+        /*
+         * Unlike the scalar-output arrays above, _udata is an optional array of
+         * output pointer values. Ownership of each returned lookup udata object is
+         * transferred to the caller.
+         */
+        if (_udata) {
+            _udata[i] = (void *)udata;
+            udata     = NULL; /* Ownership transfers to caller */
+        }
+        else
+            udata = H5MM_xfree(udata);
 
     } /* end count */
 
 done:
+    if (udata)
+        udata = H5MM_xfree(udata);
+
     FUNC_LEAVE_NOAPI(ret_value)
 
 } /* end H5D__struct_chunk_lookup() */
@@ -1545,13 +1651,48 @@ done:
 /*-------------------------------------------------------------------------
  * Function:    H5D__struct_chunk_decode_defined_values
  *
- * Purpose:     The same as H5SC_chunk_decode_t but only decodes the defined values.
- *              Optional, if not present, all values are defined.
+ * Purpose:     Decodes only the defined-value selection metadata from an
+ *              encoded structured chunk into the structured-chunk intermediate
+ *              memory representation.
+ *
+ *              The fixed-data section is not read or decoded. The resulting
+ *              H5D_chunk_cache_mem_t therefore contains a decoded sel_space and
+ *              selection-buffer state, while its data-buffer fields remain
+ *              empty.
+ *
+ *              If filters apply to the selection section, they are reversed
+ *              before checksum verification and dataspace decoding.
+ *
+ *              This callback is used when a caller needs the defined-value
+ *              selection without materializing the complete structured chunk.
+ *              It is optional at the SCC layout-callback level; if no
+ *              defined-value metadata is stored for an allocated chunk, the
+ *              caller may treat that chunk as fully defined without invoking
+ *              this callback.
+ *
+ *              nbytes and alloc_size describe the caller's raw metadata
+ *              buffer on entry. On successful return, they are updated to
+ *              describe the decoded selection state held by the intermediate
+ *              object.
+ *
+ *              partial_bound indicates whether the on-disk chunk used the
+ *              partial-bound encoding path. When the layout reports that
+ *              partial-bound chunks do not use different encoding, the value
+ *              is not significant.
  *
  * Return:      Non-negative on success/Negative on failure
  *
- * NOTE: On entry: [chunk] is the pointer to the on disk file format chunk buffer
- *       On exit: [chunk] is the pointer to the chunk intermediate struct
+ * NOTE: On entry, *chunk points to a caller-owned buffer containing only the
+ *       encoded defined-value metadata read from disk.
+ *
+ *       On successful return, this callback consumes and frees that raw buffer
+ *       and replaces *chunk with a metadata-only H5D_chunk_cache_mem_t object.
+ *       The returned intermediate object is compatible with
+ *       H5D__struct_chunk_evict(), which must be used to release it.
+ *
+ *       On failure, ownership is not transferred: *chunk continues to point
+ *       to the original caller-owned raw buffer. The callback releases only
+ *       allocations that it created internally.
  *
  *-------------------------------------------------------------------------
  */
@@ -1565,33 +1706,49 @@ H5D__struct_chunk_decode_defined_values(H5D_t *dset, size_t *nbytes /*in,out*/, 
     hbool_t                filtered = false;
     uint32_t               stored_chksum;   /* Stored metadata checksum value */
     uint32_t               computed_chksum; /* Computed metadata checksum value */
-    void                  *tmp;
     const unsigned char   *sel_p;
+    void                  *raw_chunk = NULL;
     herr_t                 ret_value = SUCCEED; /* Return value */
 
     FUNC_ENTER_PACKAGE
 
     /* Sanity checks */
     assert(dset);
+    assert(nbytes);
+    assert(alloc_size);
+    assert(chunk);
+    assert(*chunk);
+    assert(udata);
+
+    raw_chunk = *chunk;
 
     pline = &(dset->shared->dcpl_cache.stc_pline);
     if (pline && pline->tot_filt_nsects)
         filtered = true;
 
-    /* Allocate the chunk intermediate struct */
-    if (NULL == (chk = H5MM_malloc(sizeof(H5D_chunk_cache_mem_t))))
+    /*
+     * Allocate a zero-initialized intermediate structure. The zero
+     * initialization is important because metadata-only decoding does not
+     * populate the data-value fields, but the object may later be released
+     * through the generic structured-chunk evict callback.
+     */
+    if (NULL == (chk = H5MM_calloc(sizeof(H5D_chunk_cache_mem_t))))
         HGOTO_ERROR(H5E_RESOURCE, H5E_CANTALLOC, FAIL,
                     "memory allocation failed for intermediate chunk struct");
 
     /* nbytes and alloc_size for encoded selection */
     chk->sel_nbytes = chk->sel_alloc_size = udata->offset[1];
 
+    if (chk->sel_alloc_size == 0)
+        HGOTO_ERROR(H5E_DATASET, H5E_BADVALUE, FAIL,
+                    "metadata-only decode called with zero-sized defined-value selection");
+
     /* Allocate a buffer for the encoded selection */
     if (NULL == (chk->sel_buf = H5MM_malloc(chk->sel_alloc_size)))
         HGOTO_ERROR(H5E_RESOURCE, H5E_NOSPACE, FAIL, "memory allocation failed for encoded selection buffer");
 
     /* Copy over the encoded selection */
-    H5MM_memcpy(chk->sel_buf, *chunk, chk->sel_nbytes);
+    H5MM_memcpy(chk->sel_buf, raw_chunk, chk->sel_nbytes);
 
     /* Decompress the encoded selection */
     if (filtered && !partial_bound) {
@@ -1603,6 +1760,7 @@ H5D__struct_chunk_decode_defined_values(H5D_t *dset, size_t *nbytes /*in,out*/, 
         /* Retrieve filter settings from API context */
         if (H5CX_get_err_detect(&err_detect) < 0)
             HGOTO_ERROR(H5E_DATASET, H5E_CANTGET, FAIL, "can't get error detection info");
+
         if (H5CX_get_filter_cb(&filter_cb) < 0)
             HGOTO_ERROR(H5E_DATASET, H5E_CANTGET, FAIL, "can't get I/O filter callback function");
 
@@ -1630,30 +1788,63 @@ H5D__struct_chunk_decode_defined_values(H5D_t *dset, size_t *nbytes /*in,out*/, 
         } /* end for */
     }
 
-    /* Get stored and computed checksums */
-    if (H5F_get_checksums(*chunk, chk->sel_nbytes, &stored_chksum, &computed_chksum) < 0)
+    /*
+     * chk->sel_buf is authoritative here. Reverse filtering may have replaced
+     * or resized this buffer, so checksum validation must use the decoded
+     * selection buffer rather than the original raw disk buffer.
+     */
+    if (H5F_get_checksums(chk->sel_buf, chk->sel_nbytes, &stored_chksum, &computed_chksum) < 0)
         HGOTO_ERROR(H5E_DATASET, H5E_CANTGET, FAIL, "can't get checksums");
+
     if (stored_chksum != computed_chksum)
         HGOTO_ERROR(H5E_DATASET, H5E_CANTGET, FAIL, "checksums verification failed");
+
+    if (chk->sel_nbytes < H5_SIZEOF_CHKSUM || chk->sel_alloc_size < H5_SIZEOF_CHKSUM)
+        HGOTO_ERROR(H5E_DATASET, H5E_BADVALUE, FAIL, "encoded selection is smaller than checksum size");
 
     chk->sel_nbytes -= H5_SIZEOF_CHKSUM;
     chk->sel_alloc_size -= H5_SIZEOF_CHKSUM;
 
     sel_p = chk->sel_buf;
 
-    /* Decode the encoded selection to dataspace sel_space */
+    /* Decode the defined-value selection */
     if (NULL == (chk->sel_space = H5S_decode(&sel_p)))
         HGOTO_ERROR(H5E_DATASET, H5E_CANTDECODE, FAIL, "unable to decode dataspace");
 
-    /* Return values on exit */
+    /*
+     * Commit ownership only after decoding has succeeded.
+     *
+     * Until this point, *chunk continues to reference the caller-owned raw
+     * metadata buffer. Delaying the replacement makes ownership deterministic:
+     * the caller retains the raw buffer on failure, while this callback consumes
+     * it and returns the decoded object on success.
+     */
     *nbytes     = chk->sel_nbytes;
-    *alloc_size = *nbytes;
+    *alloc_size = chk->sel_alloc_size;
 
-    tmp    = *chunk;
-    *chunk = chk;
-    tmp    = H5MM_xfree(tmp);
+    raw_chunk = H5MM_xfree(raw_chunk);
+    *chunk    = chk;
+    chk       = NULL;
 
 done:
+    /*
+     * On failure, *chunk still refers to the original caller-owned raw metadata
+     * buffer. Release only the intermediate object and buffers allocated by this
+     * callback.
+     */
+    if (chk) {
+        if (chk->sel_space) {
+            if (H5S_close(chk->sel_space) < 0)
+                HDONE_ERROR(H5E_DATASPACE, H5E_CANTRELEASE, FAIL,
+                            "unable to release decoded selection after decode failure");
+            chk->sel_space = NULL;
+        }
+
+        chk->sel_buf  = H5MM_xfree(chk->sel_buf);
+        chk->data_buf = H5MM_xfree(chk->data_buf);
+        chk           = H5MM_xfree(chk);
+    }
+
     FUNC_LEAVE_NOAPI(ret_value)
 
 } /* H5D__struct_chunk_decode_defined_values() */
@@ -1823,8 +2014,8 @@ H5D__struct_chunk_encode(H5D_t *dset, hsize_t *write_size /*out*/, hsize_t *writ
         HGOTO_ERROR(H5E_DATASET, H5E_CANTGET, FAIL, "unable to get encoded dataspace size");
 
     /* Allocate buffer for selection */
-    sel_alloc_size = sel_nbytes;
-    if (NULL == (tot_buf = H5MM_malloc(sel_alloc_size + H5_SIZEOF_CHKSUM)))
+    sel_alloc_size = sel_nbytes + H5_SIZEOF_CHKSUM;
+    if (NULL == (tot_buf = H5MM_malloc(sel_alloc_size)))
         HGOTO_ERROR(H5E_RESOURCE, H5E_NOSPACE, FAIL, "memory allocation failed for the chunk");
 
     sel_p = tot_buf;
@@ -1841,7 +2032,6 @@ H5D__struct_chunk_encode(H5D_t *dset, hsize_t *write_size /*out*/, hsize_t *writ
     UINT32ENCODE(p, metadata_chksum);
 
     sel_nbytes += H5_SIZEOF_CHKSUM;
-    sel_alloc_size += H5_SIZEOF_CHKSUM;
 
     /* Get the number of elements in the selection */
     nelmts    = H5S_GET_SELECT_NPOINTS(chk->sel_space);
@@ -1905,23 +2095,43 @@ H5D__struct_chunk_encode(H5D_t *dset, hsize_t *write_size /*out*/, hsize_t *writ
         }
     }
 
-    /* Re-allocate write_buf to include + data */
-    if (NULL == (tot_buf = H5MM_realloc(tot_buf, sel_alloc_size + data_alloc_size)))
-        HGOTO_ERROR(H5E_RESOURCE, H5E_NOSPACE, FAIL, "memory allocation failed for the chunk");
+    /*
+     * Build the final structured chunk image in a freshly allocated buffer.
+     *
+     * Do not grow tot_buf in place after filter processing. Filters may alter
+     * the selection buffer allocation and size, and the fixed-data section may
+     * be larger than the original selection-only allocation. Using a fresh
+     * combined buffer avoids relying on realloc() after intermediate section
+     * processing and prevents accidental overwrite of the allocation metadata.
+     */
+    {
+        void  *new_tot_buf  = NULL;
+        size_t write_nbytes = sel_nbytes + data_nbytes;
 
-    /* Copy data to tot_buf */
-    H5MM_memcpy((uint8_t *)tot_buf + sel_nbytes, data_buf, data_nbytes);
+        if (NULL == (new_tot_buf = H5MM_malloc(write_nbytes)))
+            HGOTO_ERROR(H5E_RESOURCE, H5E_NOSPACE, FAIL, "memory allocation failed for the chunk");
+
+        H5MM_memcpy(new_tot_buf, tot_buf, sel_nbytes);
+        H5MM_memcpy((uint8_t *)new_tot_buf + sel_nbytes, data_buf, data_nbytes);
+
+        tot_buf     = H5MM_xfree(tot_buf);
+        tot_buf     = new_tot_buf;
+        new_tot_buf = NULL;
+    }
 
     udata->offset[0] = 0; /* Filler */
     udata->offset[1] = sel_nbytes;
 
     *write_size      = sel_nbytes + data_nbytes;
-    *write_buf_alloc = sel_alloc_size + data_alloc_size;
+    *write_buf_alloc = sel_nbytes + data_nbytes;
     *write_buf       = tot_buf;
 
 done:
     if (data_buf)
         data_buf = H5MM_xfree(data_buf);
+
+    if (ret_value < 0 && tot_buf)
+        tot_buf = H5MM_xfree(tot_buf);
 
     FUNC_LEAVE_NOAPI(ret_value)
 } /* H5D__struct_chunk_encode() */
@@ -2087,9 +2297,16 @@ done:
  * Purpose:     Frees chunk and all memory referenced by it.
  *              Optional, if not present free() is simply used.
  *
+ *              This callback releases both fully decoded structured chunks
+ *              and metadata-only intermediate objects created by
+ *              H5D__struct_chunk_decode_defined_values(). Fields that were
+ *              not populated by metadata-only decoding are expected to be
+ *              NULL/zero initialized.
+ *
+ *              The associated layout-specific udata object is also released.
+ *
  * Return:      Non-negative on success/Negative on failure
  *
- * NOTE: [udata] is not used??
  *-------------------------------------------------------------------------
  */
 static herr_t
@@ -2102,6 +2319,7 @@ H5D__struct_chunk_evict(H5D_t *dset, void *chunk, void *udata)
 
     /* Sanity checks */
     assert(dset);
+    assert(chunk);
 
     /* Free the sel_buf + data_buffer */
     chk->sel_buf  = H5MM_xfree(chk->sel_buf);
@@ -2230,38 +2448,40 @@ done:
 } /* H5D__struct_chunk_insert() */
 
 /*-------------------------------------------------------------------------
- * Function:    H5D__struct_chunk_vector_read
+ * Function: H5D__struct_chunk_vector_read
  *
- * Purpose:     Called when the chunk cache wants to read data directly from the
- *              disk to the user buffer via vector I/O.
- *              If not possible due to compression, etc, returns vector_possible=false.
- *              Otherwise returns the vector of selected elements in offsets
- *              (within the file, not the chunk, this is why addr is passed in)
- *              and sizes, with the number of vectors returned in vec_count.
+ * Purpose:
+ *   Translate FILE_SPACE_IN for one structured chunk into physical file
+ *   byte ranges that may be used by the SCC to construct a direct vector
+ *   read operation.
  *
- *              chunk may be passed as NULL, and may also be an in-cache chunk that
- *              only contains information on defined values.
+ *   This callback does not perform I/O and does not construct the
+ *   corresponding memory-buffer vector. On success, OFFSETS and SIZES
+ *   describe portions of the chunk's serialized on-disk value region.
+ *   Each returned offset is an absolute file address derived from ADDR.
  *
- *              If chunk is passed as NULL and the callback requires a chunk to be
- *              passed with (at least) the defined values selection, this callback
- *              shall return *require_values=true and
- *              *vec_count=0, *offsets=NULL, and *sizes=NULL.
+ *   VECTOR_POSSIBLE is set to false when the on-disk representation cannot
+ *   be accessed directly, such as when an applicable filter requires the
+ *   complete encoded chunk to be read and decoded.
  *
- *              Optional, if not present, chunk I/O is only performed on entire chunks
- *              or with selection I/O. The H5SC code checks for type conversion before
- *              calling this.
+ *   If the translation requires the chunk's defined-values selection and
+ *   CHUNK does not provide it, REQUIRE_VALUES is set to true and no vector
+ *   is returned. The caller may obtain or decode that metadata and retry.
  *
- *              partial_bound is true if the on-disk chunk was encoded with partial_bound
- *              set to true. If the dataset reported partial_bound_chunks_different_encoding
- *              as false, the setting of partial_bound is undefined.
+ *   A successful translation does not imply that an I/O operation has been
+ *   submitted or completed. The caller owns the returned OFFSETS and SIZES
+ *   arrays and is responsible for releasing them.
  *
- * Return:      Non-negative on success/Negative on failure
+ *   The vector-read and vector-write callbacks currently perform the same
+ *   selection-to-file-range translation and are intentionally retained as
+ *   separate callbacks while their eventual SCC read/write uses remain under
+ *   development. Once those use cases and their eligibility requirements are
+ *   established, their common implementation should be moved into one shared
+ *   translation helper rather than maintained independently.
  *
- * NOTE: [udata] is not not used ??
- *
- * NOTE: looks like vector_read and vector write callbacks are the same??
- * NOTE: modified from H5FD__read/write_selection_translate()
- *
+ * Return:
+ *   SUCCEED when eligibility is determined and, when possible, the vector
+ *   is produced; FAIL on an internal translation or allocation error.
  *-------------------------------------------------------------------------
  */
 static herr_t
@@ -2284,26 +2504,30 @@ H5D__struct_chunk_vector_read(H5D_t *dset, haddr_t addr, const H5S_t *file_space
     size_t                  file_nelmts;
     hsize_t                 chk_nelmts;
     hssize_t                hss_nelmts;
+    hsize_t                 projected_nelmts;
     size_t                  seq_nelem;
-    H5S_sel_iter_t         *file_iter      = NULL;
-    bool                    file_iter_init = false;
-    size_t                  vec_arr_nused  = 0;
-    size_t                  vec_arr_nalloc = VECTOR_LEN;
-    H5S_t                  *serial_values_space;
-    H5S_t                  *serial_file_space;
+    H5S_sel_iter_t         *file_iter           = NULL;
+    bool                    file_iter_init      = false;
+    size_t                  vec_arr_nused       = 0;
+    size_t                  vec_arr_nalloc      = VECTOR_LEN;
+    H5S_t                  *serial_values_space = NULL;
+    H5S_t                  *serial_file_space   = NULL;
     H5_flexible_const_ptr_t flex_selection;
     herr_t                  ret_value = SUCCEED;
 
     FUNC_ENTER_PACKAGE
+
+    *vec_count       = 0;
+    *offsets         = NULL;
+    *sizes           = NULL;
+    *vector_possible = false;
+    *require_values  = false;
 
     /* Sanity checks */
     assert(dset);
 
     if (chk == NULL) {
         *require_values = true;
-        *vec_count      = 0;
-        *offsets        = NULL;
-        *sizes          = NULL;
         HGOTO_DONE(SUCCEED);
     }
 
@@ -2319,26 +2543,49 @@ H5D__struct_chunk_vector_read(H5D_t *dset, haddr_t addr, const H5S_t *file_space
     *vector_possible = true;
 
     assert(chk != NULL);
-    assert(chk->sel_space = NULL);
+    assert(chk->sel_space != NULL);
 
     /* Get the number of elements in chk->sel_space */
     if ((hss_nelmts = (hssize_t)H5S_GET_SELECT_NPOINTS(chk->sel_space)) < 0)
         HGOTO_ERROR(H5E_VFL, H5E_CANTCOUNT, FAIL, "can't get number of elements selected");
     H5_CHECKED_ASSIGN(chk_nelmts, hsize_t, hss_nelmts, hssize_t);
 
-    /* Get the number of elements in file_space_in */
-    if ((hss_nelmts = (hssize_t)H5S_GET_SELECT_NPOINTS(file_space_in)) < 0)
-        HGOTO_ERROR(H5E_VFL, H5E_CANTCOUNT, FAIL, "can't get number of elements selected");
-    H5_CHECKED_ASSIGN(file_nelmts, size_t, hss_nelmts, hssize_t);
-
     if (NULL == (serial_values_space = H5S_create_simple(1, &chk_nelmts, NULL)))
         HGOTO_ERROR(H5E_DATASET, H5E_CANTCREATE, FAIL, "unable to create simple memory dataspace");
 
     flex_selection.cvp = file_space_in;
+
     if (H5S_select_project_intersection(chk->sel_space, serial_values_space, flex_selection.vp,
                                         &serial_file_space, true) < 0)
         HGOTO_ERROR(H5E_DATASET, H5E_CANTCLIP, FAIL,
-                    "can't project the intersection of erased space and src_space");
+                    "can't project the intersection of defined and requested values");
+
+    /*
+     * A successful projection may produce no dataspace when the requested
+     * selection contains no values defined in this sparse chunk. This is a
+     * successful translation to an empty vector.
+     */
+    if (serial_file_space == NULL)
+        HGOTO_DONE(SUCCEED);
+
+    /*
+     * The iterator traverses the projected intersection, not file_space_in.
+     * The original request may include values that are undefined in this chunk.
+     */
+    // if ((hss_nelmts = H5S_GET_SELECT_NPOINTS(serial_file_space)) < 0)
+    //     HGOTO_ERROR(H5E_VFL, H5E_CANTCOUNT, FAIL, "can't get number of elements in projected file
+    //     selection");
+    // H5_CHECKED_ASSIGN(file_nelmts, size_t, hss_nelmts, hssize_t);
+
+    projected_nelmts = H5S_GET_SELECT_NPOINTS(serial_file_space);
+    H5_CHECKED_ASSIGN(file_nelmts, size_t, projected_nelmts, hsize_t);
+
+    /*
+     * Retain this defensive branch in case the projection API returns an
+     * allocated dataspace carrying an empty selection.
+     */
+    if (file_nelmts == 0)
+        HGOTO_DONE(SUCCEED);
 
     if (0 == (elmt_size = H5T_get_size(dset->shared->type)))
         HGOTO_ERROR(H5E_DATATYPE, H5E_BADSIZE, FAIL, "datatype size invalid");
@@ -2356,10 +2603,10 @@ H5D__struct_chunk_vector_read(H5D_t *dset, haddr_t addr, const H5S_t *file_space
     file_seq_i = SEQ_LIST_LEN;
     file_nseq  = 0;
 
-    if (NULL == (vec_addrs = H5MM_malloc(VECTOR_LEN * sizeof(haddr_t *))))
+    if (NULL == (vec_addrs = H5MM_malloc(VECTOR_LEN * sizeof(*vec_addrs))))
         HGOTO_ERROR(H5E_RESOURCE, H5E_CANTALLOC, FAIL, "memory allocation failed for vector addrs");
 
-    if (NULL == (vec_sizes = H5MM_malloc(VECTOR_LEN * sizeof(size_t *))))
+    if (NULL == (vec_sizes = H5MM_malloc(VECTOR_LEN * sizeof(*vec_sizes))))
         HGOTO_ERROR(H5E_RESOURCE, H5E_CANTALLOC, FAIL, "memory allocation failed for vector sizes");
 
     /* Loop until all elements are processed */
@@ -2380,19 +2627,30 @@ H5D__struct_chunk_vector_read(H5D_t *dset, haddr_t addr, const H5S_t *file_space
         io_len = file_len[file_seq_i];
 
         if (vec_arr_nused == vec_arr_nalloc) {
-            void *tmp_ptr;
+            size_t new_nalloc;
+            void  *tmp_ptr;
 
-            /* Reallocate arrays */
-            if (NULL == (tmp_ptr = H5MM_realloc(vec_addrs, vec_arr_nalloc * 2 * sizeof(*vec_addrs))))
+            if (vec_arr_nalloc > SIZE_MAX / 2)
+                HGOTO_ERROR(H5E_RESOURCE, H5E_OVERFLOW, FAIL, "vector array element count overflow");
+
+            new_nalloc = vec_arr_nalloc * 2;
+
+            if (new_nalloc > SIZE_MAX / sizeof(*vec_addrs))
+                HGOTO_ERROR(H5E_RESOURCE, H5E_OVERFLOW, FAIL,
+                            "vector address array allocation size overflow");
+
+            if (new_nalloc > SIZE_MAX / sizeof(*vec_sizes))
+                HGOTO_ERROR(H5E_RESOURCE, H5E_OVERFLOW, FAIL, "vector size array allocation size overflow");
+
+            if (NULL == (tmp_ptr = H5MM_realloc(vec_addrs, new_nalloc * sizeof(*vec_addrs))))
                 HGOTO_ERROR(H5E_RESOURCE, H5E_CANTALLOC, FAIL, "memory reallocation failed for address list");
             vec_addrs = tmp_ptr;
 
-            if (NULL == (vec_sizes = H5MM_realloc(vec_sizes, vec_arr_nalloc * 2 * sizeof(*vec_sizes) * 2)))
+            if (NULL == (tmp_ptr = H5MM_realloc(vec_sizes, new_nalloc * sizeof(*vec_sizes))))
                 HGOTO_ERROR(H5E_RESOURCE, H5E_CANTALLOC, FAIL, "memory reallocation failed for size list");
             vec_sizes = tmp_ptr;
 
-            /* Record that we've doubled the array sizes */
-            vec_arr_nalloc *= 2;
+            vec_arr_nalloc = new_nalloc;
         }
 
         /* Add this segment to vector read list */
@@ -2414,7 +2672,13 @@ H5D__struct_chunk_vector_read(H5D_t *dset, haddr_t addr, const H5S_t *file_space
     *offsets   = vec_addrs;
     *sizes     = vec_sizes;
 
+    vec_addrs = NULL;
+    vec_sizes = NULL;
+
 done:
+    vec_addrs = H5MM_xfree(vec_addrs);
+    vec_sizes = H5MM_xfree(vec_sizes);
+
     /* Terminate and free iterators */
     if (file_iter) {
         if (file_iter_init && H5S_SELECT_ITER_RELEASE(file_iter) < 0)
@@ -2422,43 +2686,57 @@ done:
         file_iter = H5FL_FREE(H5S_sel_iter_t, file_iter);
     }
 
+    if (serial_file_space) {
+        if (H5S_close(serial_file_space) < 0)
+            HDONE_ERROR(H5E_DATASET, H5E_CANTRELEASE, FAIL, "unable to close projected serial file space");
+    }
+
+    if (serial_values_space) {
+        if (H5S_close(serial_values_space) < 0)
+            HDONE_ERROR(H5E_DATASET, H5E_CANTRELEASE, FAIL, "unable to close serial values space");
+    }
+
     FUNC_LEAVE_NOAPI(ret_value)
 
 } /* H5D__struct_chunk_vector_read() */
 
 /*-------------------------------------------------------------------------
- * Function:    H5D__struct_chunk_vector_write
+ * Function: H5D__struct_chunk_vector_write
  *
- * Purpose:     Called when the chunk cache wants to write data directly from the
- *              user buffer to the cache via vector I/O.
- *              If not possible due to compression, etc, returns vector_possible=false.
- *              Otherwise returns the vector of selected elements in offsets
- *              (within the file, not the chunk, this is why addr is passed in)
- *              and sizes, with the number of vectors returned in vec_count.
+ * Purpose:
+ *   Translate FILE_SPACE_IN for one structured chunk into physical file
+ *   byte ranges that may be used by the SCC to construct a direct vector
+ *   write operation.
  *
- *              chunk may be passed as NULL, and may also be an in-cache chunk
- *              that only contains information on defined values.
+ *   This callback does not perform I/O and does not construct the
+ *   corresponding memory-buffer vector. On success, OFFSETS and SIZES
+ *   describe existing portions of the chunk's serialized on-disk value
+ *   region that correspond to the supplied selection.
  *
- *              If chunk is passed as NULL and the callback requires a chunk to be
- *              passed with (at least) the defined values selection, this callback
- *              shall return *require_values=true and
- *              *vec_count=0, *offsets=NULL, and *sizes=NULL.
+ *   VECTOR_POSSIBLE is set to false when direct in-place access is not
+ *   compatible with the chunk's encoded representation. REQUIRE_VALUES is
+ *   set when the translation cannot be completed without decoded
+ *   defined-values metadata.
  *
- *              Optional, if not present, chunk I/O is only performed on entire chunks
- *              or with selection I/O.
- *              The H5SC code checks for type conversion before calling this.
+ *   The returned ranges alone do not establish that a direct write is safe.
+ *   The caller must additionally verify that the write does not change the
+ *   chunk's defined-values metadata, encoded size, filter representation,
+ *   index record, or SCC-resident authoritative state.
  *
- *              partial_bound is true if the on-disk chunk was encoded with partial_bound
- *              set to true. If the dataset reported partial_bound_chunks_different_encoding
- *              as false, the setting of partial_bound is undefined.
+ *   A successful translation does not imply that an I/O operation has been
+ *   submitted or completed. The caller owns the returned OFFSETS and SIZES
+ *   arrays and is responsible for releasing them.
  *
- * Return:      Non-negative on success/Negative on failure
+     The vector-read and vector-write callbacks currently perform the same
+ *   selection-to-file-range translation and are intentionally retained as
+ *   separate callbacks while their eventual SCC read/write uses remain under
+ *   development. Once those use cases and their eligibility requirements are
+ *   established, their common implementation should be moved into one shared
+ *   translation helper rather than maintained independently.
  *
- * NOTE: [udata] is not not used ??
- *
- * NOTE: looks like vector_read and vector write callbacks are the same??
- * NOTE: modified from H5FD__read/write_selection_translate()
- *
+ * Return:
+ *   SUCCEED when eligibility is determined and, when possible, the vector
+ *   is produced; FAIL on an internal translation or allocation error.
  *-------------------------------------------------------------------------
  */
 static herr_t
@@ -2479,27 +2757,31 @@ H5D__struct_chunk_vector_write(H5D_t *dset, haddr_t addr, const H5S_t *file_spac
     size_t                  file_nelmts;
     hsize_t                 chk_nelmts;
     hssize_t                hss_nelmts;
+    hsize_t                 projected_nelmts;
     size_t                  seq_nelem;
-    H5S_sel_iter_t         *file_iter      = NULL;
-    bool                    file_iter_init = false;
-    size_t                  vec_arr_nused  = 0;
-    size_t                  vec_arr_nalloc = VECTOR_LEN;
-    H5O_stc_pline_t        *pline          = NULL; /* I/O pipeline info */
-    H5S_t                  *serial_values_space;
-    H5S_t                  *serial_file_space;
+    H5S_sel_iter_t         *file_iter           = NULL;
+    bool                    file_iter_init      = false;
+    size_t                  vec_arr_nused       = 0;
+    size_t                  vec_arr_nalloc      = VECTOR_LEN;
+    H5O_stc_pline_t        *pline               = NULL; /* I/O pipeline info */
+    H5S_t                  *serial_values_space = NULL;
+    H5S_t                  *serial_file_space   = NULL;
     H5_flexible_const_ptr_t flex_selection;
     herr_t                  ret_value = SUCCEED;
 
     FUNC_ENTER_PACKAGE
+
+    *vec_count       = 0;
+    *offsets         = NULL;
+    *sizes           = NULL;
+    *vector_possible = false;
+    *require_values  = false;
 
     /* Sanity checks */
     assert(dset);
 
     if (chk == NULL) {
         *require_values = true;
-        *vec_count      = 0;
-        *offsets        = NULL;
-        *sizes          = NULL;
         HGOTO_DONE(SUCCEED);
     }
 
@@ -2524,19 +2806,41 @@ H5D__struct_chunk_vector_write(H5D_t *dset, haddr_t addr, const H5S_t *file_spac
         HGOTO_ERROR(H5E_VFL, H5E_CANTCOUNT, FAIL, "can't get number of elements selected");
     H5_CHECKED_ASSIGN(chk_nelmts, hsize_t, hss_nelmts, hssize_t);
 
-    /* Get the number of elements in file_space_in */
-    if ((hss_nelmts = (hssize_t)H5S_GET_SELECT_NPOINTS(file_space_in)) < 0)
-        HGOTO_ERROR(H5E_VFL, H5E_CANTCOUNT, FAIL, "can't get number of elements selected");
-    H5_CHECKED_ASSIGN(file_nelmts, size_t, hss_nelmts, hssize_t);
-
     if (NULL == (serial_values_space = H5S_create_simple(1, &chk_nelmts, NULL)))
         HGOTO_ERROR(H5E_DATASET, H5E_CANTCREATE, FAIL, "unable to create simple memory dataspace");
 
     flex_selection.cvp = file_space_in;
+
     if (H5S_select_project_intersection(chk->sel_space, serial_values_space, flex_selection.vp,
                                         &serial_file_space, true) < 0)
         HGOTO_ERROR(H5E_DATASET, H5E_CANTCLIP, FAIL,
-                    "can't project the intersection of erased space and src_space");
+                    "can't project the intersection of defined and requested values");
+
+    /*
+     * A successful projection may produce no dataspace when the requested
+     * selection contains no values defined in this sparse chunk. This is a
+     * successful translation to an empty vector.
+     */
+    if (serial_file_space == NULL)
+        HGOTO_DONE(SUCCEED);
+
+    /*
+     * The iterator traverses the projected intersection, not file_space_in.
+     * The original request may include values that are undefined in this chunk.
+     */
+    // if ((hss_nelmts = H5S_GET_SELECT_NPOINTS(serial_file_space)) < 0)
+    //     HGOTO_ERROR(H5E_VFL, H5E_CANTCOUNT, FAIL, "can't get number of elements in projected file
+    //     selection");
+    // H5_CHECKED_ASSIGN(file_nelmts, size_t, hss_nelmts, hssize_t);
+    projected_nelmts = H5S_GET_SELECT_NPOINTS(serial_file_space);
+    H5_CHECKED_ASSIGN(file_nelmts, size_t, projected_nelmts, hsize_t);
+
+    /*
+     * Retain this defensive branch in case the projection API returns an
+     * allocated dataspace carrying an empty selection.
+     */
+    if (file_nelmts == 0)
+        HGOTO_DONE(SUCCEED);
 
     if (0 == (elmt_size = H5T_get_size(dset->shared->type)))
         HGOTO_ERROR(H5E_DATATYPE, H5E_BADSIZE, FAIL, "datatype size invalid");
@@ -2553,10 +2857,10 @@ H5D__struct_chunk_vector_write(H5D_t *dset, haddr_t addr, const H5S_t *file_spac
     file_seq_i = SEQ_LIST_LEN;
     file_nseq  = 0;
 
-    if (NULL == (vec_addrs = H5MM_malloc(VECTOR_LEN * sizeof(haddr_t *))))
+    if (NULL == (vec_addrs = H5MM_malloc(VECTOR_LEN * sizeof(*vec_addrs))))
         HGOTO_ERROR(H5E_RESOURCE, H5E_CANTALLOC, FAIL, "memory allocation failed for vector addrs");
 
-    if (NULL == (vec_sizes = H5MM_malloc(VECTOR_LEN * sizeof(size_t *))))
+    if (NULL == (vec_sizes = H5MM_malloc(VECTOR_LEN * sizeof(*vec_sizes))))
         HGOTO_ERROR(H5E_RESOURCE, H5E_CANTALLOC, FAIL, "memory allocation failed for vector sizes");
 
     /* Loop until all elements are processed */
@@ -2577,19 +2881,30 @@ H5D__struct_chunk_vector_write(H5D_t *dset, haddr_t addr, const H5S_t *file_spac
         io_len = file_len[file_seq_i];
 
         if (vec_arr_nused == vec_arr_nalloc) {
-            void *tmp_ptr;
+            size_t new_nalloc;
+            void  *tmp_ptr;
 
-            /* Reallocate arrays */
-            if (NULL == (tmp_ptr = H5MM_realloc(vec_addrs, vec_arr_nalloc * 2 * sizeof(*vec_addrs))))
+            if (vec_arr_nalloc > SIZE_MAX / 2)
+                HGOTO_ERROR(H5E_RESOURCE, H5E_OVERFLOW, FAIL, "vector array element count overflow");
+
+            new_nalloc = vec_arr_nalloc * 2;
+
+            if (new_nalloc > SIZE_MAX / sizeof(*vec_addrs))
+                HGOTO_ERROR(H5E_RESOURCE, H5E_OVERFLOW, FAIL,
+                            "vector address array allocation size overflow");
+
+            if (new_nalloc > SIZE_MAX / sizeof(*vec_sizes))
+                HGOTO_ERROR(H5E_RESOURCE, H5E_OVERFLOW, FAIL, "vector size array allocation size overflow");
+
+            if (NULL == (tmp_ptr = H5MM_realloc(vec_addrs, new_nalloc * sizeof(*vec_addrs))))
                 HGOTO_ERROR(H5E_RESOURCE, H5E_CANTALLOC, FAIL, "memory reallocation failed for address list");
             vec_addrs = tmp_ptr;
 
-            if (NULL == (vec_sizes = H5MM_realloc(vec_sizes, vec_arr_nalloc * 2 * sizeof(*vec_sizes) * 2)))
+            if (NULL == (tmp_ptr = H5MM_realloc(vec_sizes, new_nalloc * sizeof(*vec_sizes))))
                 HGOTO_ERROR(H5E_RESOURCE, H5E_CANTALLOC, FAIL, "memory reallocation failed for size list");
             vec_sizes = tmp_ptr;
 
-            /* Record that we've doubled the array sizes */
-            vec_arr_nalloc *= 2;
+            vec_arr_nalloc = new_nalloc;
         }
 
         /* Add this segment to vector read list */
@@ -2611,12 +2926,28 @@ H5D__struct_chunk_vector_write(H5D_t *dset, haddr_t addr, const H5S_t *file_spac
     *offsets   = vec_addrs;
     *sizes     = vec_sizes;
 
+    vec_addrs = NULL;
+    vec_sizes = NULL;
+
 done:
+    vec_addrs = H5MM_xfree(vec_addrs);
+    vec_sizes = H5MM_xfree(vec_sizes);
+
     /* Terminate and free iterators */
     if (file_iter) {
         if (file_iter_init && H5S_SELECT_ITER_RELEASE(file_iter) < 0)
             HGOTO_ERROR(H5E_INTERNAL, H5E_CANTFREE, FAIL, "can't release file selection iterator");
         file_iter = H5FL_FREE(H5S_sel_iter_t, file_iter);
+    }
+
+    if (serial_file_space) {
+        if (H5S_close(serial_file_space) < 0)
+            HDONE_ERROR(H5E_DATASET, H5E_CANTRELEASE, FAIL, "unable to close projected serial file space");
+    }
+
+    if (serial_values_space) {
+        if (H5S_close(serial_values_space) < 0)
+            HDONE_ERROR(H5E_DATASET, H5E_CANTRELEASE, FAIL, "unable to close serial values space");
     }
 
     FUNC_LEAVE_NOAPI(ret_value)
@@ -2672,6 +3003,7 @@ H5D__struct_chunk_scatter_mem(H5D_dset_io_info_t *dset_info, H5D_io_type_info_t 
     size_t          buf_off          = 0; /* Buffer offset for in-place type conversion */
     const H5D_chunk_cache_mem_t *chk = (const H5D_chunk_cache_mem_t *)chunk; /* Chunk's memory cache info */
     void                        *data_scat_buf = NULL;
+    void                        *packed_buf    = NULL;
     hsize_t                      scat_buf_size;
     H5_flexible_const_ptr_t      flex_mspace;
     H5_flexible_const_ptr_t      flex_fspace;
@@ -2731,6 +3063,9 @@ H5D__struct_chunk_scatter_mem(H5D_dset_io_info_t *dset_info, H5D_io_type_info_t 
 
         if (sel_iter_init && H5S_SELECT_ITER_RELEASE(sel_iter) < 0)
             HDONE_ERROR(H5E_DATASET, H5E_CANTFREE, FAIL, "Can't release selection iterator");
+
+        sel_iter_init = false;
+
         if (sel_iter)
             sel_iter = H5FL_FREE(H5S_sel_iter_t, sel_iter);
     }
@@ -2739,10 +3074,63 @@ H5D__struct_chunk_scatter_mem(H5D_dset_io_info_t *dset_info, H5D_io_type_info_t 
      * If there is no data transform or type conversion then read directly
      * into the application's buffer.
      */
+
     if (dset_info->type_info.is_xform_noop && dset_info->type_info.is_conv_noop) {
 
-        if (H5D_select_io_mem(buf, flex_mspace.vp, data_scat_buf, flex_fspace.vp, mem_type_size, nelmts))
-            HGOTO_ERROR(H5E_DATASET, H5E_READERROR, FAIL, "couldn't copy chunk data to read buffer");
+        size_t selected_nelmts;
+        size_t packed_buf_size;
+        size_t n;
+
+        H5_CHECK_OVERFLOW(nelmts, hsize_t, size_t);
+        selected_nelmts = (size_t)nelmts;
+
+        if (selected_nelmts > (SIZE_MAX / file_type_size))
+            HGOTO_ERROR(H5E_RESOURCE, H5E_OVERFLOW, FAIL, "packed read buffer size overflow");
+
+        packed_buf_size = selected_nelmts * file_type_size;
+
+        if (NULL == (packed_buf = H5MM_malloc(packed_buf_size)))
+            HGOTO_ERROR(H5E_RESOURCE, H5E_NOSPACE, FAIL, "unable to allocate packed read buffer");
+
+        /*
+         * Gather the selected chunk positions into a contiguous buffer.
+         */
+        if (NULL == (file_iter = H5FL_MALLOC(H5S_sel_iter_t)))
+            HGOTO_ERROR(H5E_DATASET, H5E_CANTALLOC, FAIL, "can't allocate file selection iterator");
+
+        if (H5S_select_iter_init(file_iter, flex_fspace.vp, file_type_size,
+                                 H5S_SEL_ITER_GET_SEQ_LIST_SORTED) < 0)
+            HGOTO_ERROR(H5E_DATASET, H5E_CANTINIT, FAIL, "unable to initialize file selection iterator");
+
+        file_iter_init = true;
+
+        n = H5D__gather_mem(data_scat_buf, file_iter, selected_nelmts, packed_buf);
+        if (n != selected_nelmts)
+            HGOTO_ERROR(H5E_IO, H5E_READERROR, FAIL, "unable to gather selected chunk values");
+
+        if (H5S_SELECT_ITER_RELEASE(file_iter) < 0)
+            HGOTO_ERROR(H5E_DATASET, H5E_CANTFREE, FAIL, "can't release file selection iterator");
+
+        file_iter_init = false;
+        file_iter      = H5FL_FREE(H5S_sel_iter_t, file_iter);
+
+        /*
+         * Scatter the contiguous values according to the application's
+         * memory selection. This explicitly supports differing ranks.
+         */
+        if (NULL == (mem_iter = H5FL_MALLOC(H5S_sel_iter_t)))
+            HGOTO_ERROR(H5E_DATASET, H5E_CANTALLOC, FAIL, "can't allocate memory selection iterator");
+
+        if (H5S_select_iter_init(mem_iter, flex_mspace.vp, mem_type_size, H5S_SEL_ITER_GET_SEQ_LIST_SORTED) <
+            0)
+            HGOTO_ERROR(H5E_DATASET, H5E_CANTINIT, FAIL, "unable to initialize memory selection iterator");
+
+        mem_iter_init = true;
+
+        if (H5D__scatter_mem(packed_buf, mem_iter, selected_nelmts, buf /*out*/) < 0)
+            HGOTO_ERROR(H5E_DATASET, H5E_READERROR, FAIL, "unable to scatter values into read buffer");
+
+        packed_buf = H5MM_xfree(packed_buf);
     }
     else { /* With type conversion */
 
@@ -2906,6 +3294,9 @@ done:
     if (data_scat_buf)
         data_scat_buf = H5FL_BLK_FREE(scat_buf, data_scat_buf);
 
+    if (packed_buf)
+        packed_buf = H5MM_xfree(packed_buf);
+
     FUNC_LEAVE_NOAPI(ret_value)
 } /* H5D__struct_chunk_scatter_mem() */
 
@@ -2953,12 +3344,14 @@ H5D__struct_chunk_gather_mem(H5D_dset_io_info_t *dset_info, H5D_io_type_info_t *
     hsize_t                 smine_start;            /* Strip mine start loc	*/
     size_t                  smine_nelmts;           /* Elements per strip	*/
     hsize_t                 nelmts; /* Number of elements selected in file & memory dataspaces */
+    size_t                  selected_nelmts;
     size_t                  mem_type_size;
     size_t                  file_type_size;
     size_t                  buf_off        = 0;     /* Buffer offset for in-place type conversion */
     bool                    in_place_tconv = false; /* Whether to perform in-place type_conversion */
     H5D_chunk_cache_mem_t  *chk            = (H5D_chunk_cache_mem_t *)chunk; /* Chunk's memory cache info */
-    void                   *data_scat_buf;
+    void                   *data_scat_buf  = NULL;
+    void                   *packed_buf     = NULL;
     hsize_t                 scat_buf_size;
     H5_flexible_const_ptr_t flex_mspace;
     H5_flexible_const_ptr_t flex_fspace;
@@ -2983,6 +3376,13 @@ H5D__struct_chunk_gather_mem(H5D_dset_io_info_t *dset_info, H5D_io_type_info_t *
     /* Check for NOOP write */
     if (nelmts == 0)
         HGOTO_DONE(SUCCEED);
+
+    /*
+     * H5S selection counts use hsize_t, while the gather/scatter helpers
+     * consume size_t element counts.
+     */
+    H5_CHECK_OVERFLOW(nelmts, hsize_t, size_t);
+    selected_nelmts = (size_t)nelmts;
 
     mem_type_size  = dset_info->type_info.src_type_size;
     file_type_size = dset_info->type_info.dst_type_size;
@@ -3026,6 +3426,7 @@ H5D__struct_chunk_gather_mem(H5D_dset_io_info_t *dset_info, H5D_io_type_info_t *
 
             if (sel_iter_init && H5S_SELECT_ITER_RELEASE(sel_iter) < 0)
                 HDONE_ERROR(H5E_DATASET, H5E_CANTFREE, FAIL, "Can't release selection iterator");
+
             if (sel_iter)
                 sel_iter = H5FL_FREE(H5S_sel_iter_t, sel_iter);
         }
@@ -3035,10 +3436,52 @@ H5D__struct_chunk_gather_mem(H5D_dset_io_info_t *dset_info, H5D_io_type_info_t *
      * If there is no data transform or type conversion then write directly
      * into the chunk buffer.
      */
+
     if (dset_info->type_info.is_xform_noop && dset_info->type_info.is_conv_noop) {
 
-        if (H5D_select_io_mem(data_scat_buf, flex_fspace.vp, buf, flex_mspace.vp, file_type_size, nelmts))
-            HGOTO_ERROR(H5E_DATASET, H5E_WRITEERROR, FAIL, "couldn't copy chunk data to write buffer");
+        size_t packed_buf_size = 0;
+        size_t n;
+
+        if (selected_nelmts > (SIZE_MAX / file_type_size))
+            HGOTO_ERROR(H5E_RESOURCE, H5E_OVERFLOW, FAIL, "packed write buffer size overflow");
+
+        packed_buf_size = selected_nelmts * file_type_size;
+
+        if (NULL == (packed_buf = H5MM_malloc(packed_buf_size)))
+            HGOTO_ERROR(H5E_RESOURCE, H5E_NOSPACE, FAIL, "unable to allocate packed write buffer");
+
+        if (NULL == (mem_iter = H5FL_MALLOC(H5S_sel_iter_t)))
+            HGOTO_ERROR(H5E_DATASET, H5E_CANTALLOC, FAIL, "can't allocate memory selection iterator");
+
+        if (H5S_select_iter_init(mem_iter, flex_mspace.vp, file_type_size, H5S_SEL_ITER_GET_SEQ_LIST_SORTED) <
+            0)
+            HGOTO_ERROR(H5E_DATASET, H5E_CANTINIT, FAIL, "unable to initialize memory selection iterator");
+
+        mem_iter_init = true;
+
+        n = H5D__gather_mem(buf, mem_iter, selected_nelmts, packed_buf);
+        if (n != selected_nelmts)
+            HGOTO_ERROR(H5E_IO, H5E_WRITEERROR, FAIL, "unable to gather selected memory values");
+
+        if (H5S_SELECT_ITER_RELEASE(mem_iter) < 0)
+            HGOTO_ERROR(H5E_DATASET, H5E_CANTFREE, FAIL, "can't release memory selection iterator");
+
+        mem_iter_init = false;
+        mem_iter      = H5FL_FREE(H5S_sel_iter_t, mem_iter);
+
+        if (NULL == (file_iter = H5FL_MALLOC(H5S_sel_iter_t)))
+            HGOTO_ERROR(H5E_DATASET, H5E_CANTALLOC, FAIL, "can't allocate file selection iterator");
+
+        if (H5S_select_iter_init(file_iter, flex_fspace.vp, file_type_size,
+                                 H5S_SEL_ITER_GET_SEQ_LIST_SORTED) < 0)
+            HGOTO_ERROR(H5E_DATASET, H5E_CANTINIT, FAIL, "unable to initialize file selection iterator");
+
+        file_iter_init = true;
+
+        if (H5D__scatter_mem(packed_buf, file_iter, selected_nelmts, data_scat_buf) < 0)
+            HGOTO_ERROR(H5E_DATASET, H5E_WRITEERROR, FAIL, "unable to scatter values into chunk buffer");
+
+        packed_buf = H5MM_xfree(packed_buf);
     }
     else { /* with type conversion */
 
@@ -3241,19 +3684,26 @@ H5D__struct_chunk_gather_mem(H5D_dset_io_info_t *dset_info, H5D_io_type_info_t *
             HGOTO_ERROR(H5E_DATASET, H5E_WRITEERROR, FAIL, "mem gather failed");
 
         /* Free the iterator */
-        if (sel_iter_init && H5S_SELECT_ITER_RELEASE(sel_iter) < 0)
-            HDONE_ERROR(H5E_DATASET, H5E_CANTFREE, FAIL, "Can't release selection iterator");
+        if (sel_iter_init) {
+            if (H5S_SELECT_ITER_RELEASE(sel_iter) < 0)
+                HDONE_ERROR(H5E_DATASET, H5E_CANTFREE, FAIL, "can't release chunk selection iterator");
+
+            sel_iter_init = false;
+        }
+
         if (sel_iter)
             sel_iter = H5FL_FREE(H5S_sel_iter_t, sel_iter);
 
-        /* Free the buffer */
-        if (data_scat_buf)
-            data_scat_buf = H5FL_BLK_FREE(scat_buf, data_scat_buf);
+        // /* Free the buffer */
+        // if (data_scat_buf)
+        //     data_scat_buf = H5FL_BLK_FREE(scat_buf, data_scat_buf);
     }
 
     *nbytes += chk->sel_nbytes + chk->data_nbytes;
     *alloc_size += chk->sel_alloc_size + chk->data_alloc_size;
-    *alloc_size_total += (*nbytes + *alloc_size);
+
+    /* Authoritative resident allocation, without encoded-size double counting. */
+    *alloc_size_total = chk->sel_alloc_size + chk->data_alloc_size;
 
 done:
     /* Release selection iterators */
@@ -3271,6 +3721,15 @@ done:
         HDONE_ERROR(H5E_DATASET, H5E_CANTFREE, FAIL, "Can't release selection iterator");
     if (bkg_iter)
         bkg_iter = H5FL_FREE(H5S_sel_iter_t, bkg_iter);
+
+    if (sel_iter)
+        sel_iter = H5FL_FREE(H5S_sel_iter_t, sel_iter);
+
+    if (data_scat_buf)
+        data_scat_buf = H5FL_BLK_FREE(scat_buf, data_scat_buf);
+
+    if (packed_buf)
+        packed_buf = H5MM_xfree(packed_buf);
 
     FUNC_LEAVE_NOAPI(ret_value)
 } /* H5D__struct_chunk_gather_mem() */
@@ -3373,7 +3832,8 @@ H5D__struct_chunk_fill(H5D_dset_io_info_t *dset_info, H5D_io_type_info_t H5_ATTR
     /* Return values */
     *nbytes += chk->data_nbytes;
     *alloc_size += chk->data_alloc_size;
-    *alloc_size_total += *alloc_size;
+
+    *alloc_size_total = chk->sel_alloc_size + chk->data_alloc_size;
 
 done:
     FUNC_LEAVE_NOAPI(ret_value)
@@ -3396,33 +3856,73 @@ done:
  * NOTE: [udata] not used??
  *-------------------------------------------------------------------------
  */
+
 static herr_t
 H5D__struct_chunk_defined_values(H5D_t *dset, const H5S_t *selection, void *chunk,
                                  H5S_t **defined_values /*out*/, void H5_ATTR_UNUSED *udata)
 {
-
-    H5D_chunk_cache_mem_t  *chk = (H5D_chunk_cache_mem_t *)chunk; /* Chunk's memory cache info */
-    H5_flexible_const_ptr_t flex_sel;
-    herr_t                  ret_value = SUCCEED; /* Return value		*/
+    H5D_chunk_cache_mem_t *chk       = (H5D_chunk_cache_mem_t *)chunk; /* Chunk's memory cache info */
+    H5S_t                 *tmp_space = NULL;
+    H5S_sel_type           sel_type;
+    H5S_sel_type           def_type;
+    herr_t                 ret_value = SUCCEED;
 
     FUNC_ENTER_PACKAGE
 
-    /* Sanity check */
+    /* Sanity checks */
     assert(dset);
+    assert(selection);
+    assert(chunk);
+    assert(defined_values);
+    assert(chk->sel_space);
 
-    flex_sel.cvp = selection;
+    *defined_values = NULL;
 
-    if (H5S_GET_SELECT_TYPE(selection) == H5S_SEL_ALL) {
+    if ((sel_type = H5S_GET_SELECT_TYPE(selection)) < H5S_SEL_NONE)
+        HGOTO_ERROR(H5E_DATASPACE, H5E_BADSELECT, FAIL, "unable to get input selection type");
+
+    if ((def_type = H5S_GET_SELECT_TYPE(chk->sel_space)) < H5S_SEL_NONE)
+        HGOTO_ERROR(H5E_DATASPACE, H5E_BADSELECT, FAIL, "unable to get defined-values selection type");
+
+    if (sel_type == H5S_SEL_ALL) {
+        /* Caller wants all defined values in the chunk */
         if (NULL == (*defined_values = H5S_copy(chk->sel_space, false, true)))
-            HGOTO_ERROR(H5E_DATASET, H5E_CANTINIT, FAIL, "unable to get dataspace");
+            HGOTO_ERROR(H5E_DATASET, H5E_CANTINIT, FAIL, "unable to copy defined-values dataspace");
     }
-    else if (H5S_GET_SELECT_TYPE(selection) == H5S_SEL_HYPERSLABS)
+    else if (sel_type == H5S_SEL_HYPERSLABS) {
+        /*
+         * If all values in the chunk are defined, intersection with the
+         * caller's hyperslab is just the caller's hyperslab selection.
+         */
+        if (def_type == H5S_SEL_ALL) {
+            if (NULL == (*defined_values = H5S_copy(selection, false, true)))
+                HGOTO_ERROR(H5E_DATASPACE, H5E_CANTCOPY, FAIL, "unable to copy selection dataspace");
+        }
+        else {
+            /*
+             * For non-ALL defined-value selections, combine on a copy of the
+             * caller's selection.
+             */
+            if (NULL == (tmp_space = H5S_copy(selection, false, true)))
+                HGOTO_ERROR(H5E_DATASPACE, H5E_CANTCOPY, FAIL, "unable to copy selection dataspace");
 
-        *defined_values = H5S__combine_select(flex_sel.vp, H5S_SELECT_AND, chk->sel_space);
+            if (NULL == (*defined_values = H5S__combine_select(tmp_space, H5S_SELECT_AND, chk->sel_space)))
+                HGOTO_ERROR(H5E_DATASPACE, H5E_CANTINIT, FAIL,
+                            "unable to intersect selection with defined values");
+
+            if (H5S_close(tmp_space) < 0)
+                HGOTO_ERROR(H5E_DATASPACE, H5E_CANTRELEASE, FAIL,
+                            "unable to close temporary selection dataspace");
+            tmp_space = NULL;
+        }
+    }
     else
-        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, H5I_INVALID_HID, "dataspaces don't have hyperslab selections");
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL,
+                    "defined-values callback only supports H5S_ALL and hyperslab selections");
 
 done:
+    if (tmp_space && H5S_close(tmp_space) < 0)
+        HDONE_ERROR(H5E_DATASPACE, H5E_CANTRELEASE, FAIL, "unable to close temporary selection dataspace");
 
     FUNC_LEAVE_NOAPI(ret_value)
 } /* H5D__struct_chunk_defined_values() */
@@ -3456,172 +3956,244 @@ H5D__struct_chunk_erase_values(H5D_t *dset, const H5S_t *selection, size_t *nbyt
     void                   *buf = chk->data_buf;
     H5S_t                  *serial_values_space = NULL;
     H5S_t                  *serial_erase_space  = NULL;
-    hsize_t                 chk_nelmts;
-    hsize_t                 erase_nelmts;
+    H5S_t                  *new_space           = NULL;
     H5_flexible_const_ptr_t flex_selection;
 
-    H5S_sel_iter_t *erase_iter      = NULL;  /* Erase selection iteration info*/
-    bool            erase_iter_init = false; /* Erase selection iteration info has been initialized */
-    size_t          elmt_size;
-    size_t          dxpl_vec_size; /* Vector length from API context's DXPL */
-    size_t          vec_size;      /* Vector length */
-    size_t         *len = NULL;    /* Pointer to sequence lengths */
-    hsize_t        *off = NULL;    /* Pointer to sequence offsets */
-    size_t          curr_len;      /* Length of bytes left to process in sequence */
-    hsize_t         curr_off;      /* Length of bytes left to process in sequence */
-    size_t          nseq;          /* Number of sequences generated */
-    size_t          curr_seq;      /* Current sequence being processed */
-    size_t          nelem;         /* Number of elements used in sequences */
-    hssize_t        hss_nelmts;
-    size_t          new_nelmts;
-    hsize_t         dst_off;
-    hsize_t         persist_off;
-    hsize_t         prev_persist_off;
-    hsize_t         persist_end_off;
-    hsize_t         prev_persist_end_off;
-    hsize_t         tmp_off;
-    hsize_t         num_bytes;
-    hsize_t         tot_erased_bytes = 0;
-    H5S_t          *new_space;
+    H5S_sel_iter_t *erase_iter      = NULL;
+    bool            erase_iter_init = false;
 
-    herr_t ret_value = SUCCEED; /* Return value		*/
+    hsize_t  chk_nelmts;
+    hsize_t  erase_nelmts;
+    hsize_t  projected_erase_nelmts;
+    hssize_t hss_nelmts;
+    size_t   elmt_size;
+    size_t   chk_nbytes;
+    size_t   dxpl_vec_size;
+    size_t   vec_size;
+    size_t  *len = NULL;
+    hsize_t *off = NULL;
+    size_t   nseq;
+    size_t   nelem;
+    size_t   curr_seq;
+    size_t   src_off;
+    size_t   dst_off;
+    size_t   keep_bytes;
+    size_t   prev_end_off;
+    size_t   total_erased_bytes = 0;
+    size_t   new_nelmts;
+
+    herr_t ret_value = SUCCEED;
 
     FUNC_ENTER_PACKAGE
 
-    /* Sanity check */
     assert(dset);
+    assert(selection);
+    assert(chunk);
+    assert(delete_chunk);
 
-    /* Get the number of elements in chk->sel_space */
+    *delete_chunk = false;
+
+    /* Number of currently defined elements in the chunk */
     if ((hss_nelmts = (hssize_t)H5S_GET_SELECT_NPOINTS(chk->sel_space)) < 0)
-        HGOTO_ERROR(H5E_VFL, H5E_CANTCOUNT, FAIL, "can't get number of elements selected");
-    H5_CHECKED_ASSIGN(chk_nelmts, size_t, hss_nelmts, hssize_t);
+        HGOTO_ERROR(H5E_VFL, H5E_CANTCOUNT, FAIL, "can't get number of defined elements in chunk");
+    H5_CHECKED_ASSIGN(chk_nelmts, hsize_t, hss_nelmts, hssize_t);
 
-    /* Get the number of elements in selection */
+    /* Number of elements requested to erase */
     if ((hss_nelmts = (hssize_t)H5S_GET_SELECT_NPOINTS(selection)) < 0)
-        HGOTO_ERROR(H5E_VFL, H5E_CANTCOUNT, FAIL, "can't get number of elements selected");
-    H5_CHECKED_ASSIGN(erase_nelmts, size_t, hss_nelmts, hssize_t);
+        HGOTO_ERROR(H5E_VFL, H5E_CANTCOUNT, FAIL, "can't get number of elements selected for erase");
+    H5_CHECKED_ASSIGN(erase_nelmts, hsize_t, hss_nelmts, hssize_t);
 
+    /* If all defined values are being erased, delete the chunk */
     if (chk_nelmts == erase_nelmts) {
         *delete_chunk = true;
         HGOTO_DONE(SUCCEED);
     }
 
+    if (0 == (elmt_size = H5T_get_size(dset->shared->type)))
+        HGOTO_ERROR(H5E_DATATYPE, H5E_BADSIZE, FAIL, "datatype size invalid");
+
+    chk_nbytes = chk->data_nbytes;
+
+    /* Build a 1D serial dataspace for the packed defined values */
     if (NULL == (serial_values_space = H5S_create_simple(1, &chk_nelmts, NULL)))
-        HGOTO_ERROR(H5E_DATASET, H5E_CANTCREATE, FAIL, "unable to create simple memory dataspace");
+        HGOTO_ERROR(H5E_DATASET, H5E_CANTCREATE, FAIL, "unable to create serial values dataspace");
 
     flex_selection.cvp = selection;
     if (H5S_select_project_intersection(chk->sel_space, serial_values_space, flex_selection.vp,
                                         &serial_erase_space, true) < 0)
         HGOTO_ERROR(H5E_DATASET, H5E_CANTCLIP, FAIL,
-                    "can't project the intersection of erased space and src_space");
+                    "can't project erase selection into packed-value coordinates");
 
-    if (0 == (elmt_size = H5T_get_size(dset->shared->type)))
-        HGOTO_ERROR(H5E_DATATYPE, H5E_BADSIZE, FAIL, "datatype size invalid");
+    /*
+     * Use the projected erase selection for packed-buffer compaction.  The
+     * requested erase selection can include elements that are not currently
+     * defined in this sparse chunk.
+     */
+    if ((hss_nelmts = (hssize_t)H5S_GET_SELECT_NPOINTS(serial_erase_space)) < 0)
+        HGOTO_ERROR(H5E_VFL, H5E_CANTCOUNT, FAIL,
+                    "can't get number of projected elements selected for erase");
+    H5_CHECKED_ASSIGN(projected_erase_nelmts, hsize_t, hss_nelmts, hssize_t);
+
+    if (projected_erase_nelmts == 0)
+        HGOTO_DONE(SUCCEED);
+
+    erase_nelmts = projected_erase_nelmts;
 
     if (NULL == (erase_iter = H5FL_MALLOC(H5S_sel_iter_t)))
-        HGOTO_ERROR(H5E_DATASET, H5E_CANTALLOC, FAIL, "can't allocate file iterator");
+        HGOTO_ERROR(H5E_DATASET, H5E_CANTALLOC, FAIL, "can't allocate selection iterator");
 
     if (H5S_select_iter_init(erase_iter, serial_erase_space, elmt_size, H5S_SEL_ITER_GET_SEQ_LIST_SORTED) < 0)
-        HGOTO_ERROR(H5E_DATASET, H5E_CANTINIT, FAIL, "unable to initialize file selection information");
-    erase_iter_init = true; /*erase selection iteration info has been initialized */
+        HGOTO_ERROR(H5E_DATASET, H5E_CANTINIT, FAIL, "unable to initialize erase selection iterator");
+    erase_iter_init = true;
 
-    /* Get info from API context */
     if (H5CX_get_vec_size(&dxpl_vec_size) < 0)
         HGOTO_ERROR(H5E_DATASET, H5E_CANTGET, FAIL, "can't retrieve I/O vector size");
 
-    /* Allocate the vector I/O arrays */
-    if (dxpl_vec_size > H5D_IO_VECTOR_SIZE)
-        vec_size = dxpl_vec_size;
-    else
-        vec_size = H5D_IO_VECTOR_SIZE;
+    vec_size = (dxpl_vec_size > H5D_IO_VECTOR_SIZE) ? dxpl_vec_size : H5D_IO_VECTOR_SIZE;
 
     if (NULL == (len = H5FL_SEQ_MALLOC(size_t, vec_size)))
         HGOTO_ERROR(H5E_DATASET, H5E_CANTALLOC, FAIL, "can't allocate I/O length vector array");
     if (NULL == (off = H5FL_SEQ_MALLOC(hsize_t, vec_size)))
         HGOTO_ERROR(H5E_DATASET, H5E_CANTALLOC, FAIL, "can't allocate I/O offset vector array");
 
-    /* Loop until all elements are erased */
+    /*
+     * Compact the packed data buffer by copying surviving byte ranges
+     * downward over erased byte ranges.
+     */
+    prev_end_off = 0;
+    dst_off      = 0;
+
     while (erase_nelmts > 0) {
-        /* Get list of sequences for selection to erase */
         if (H5S_SELECT_ITER_GET_SEQ_LIST(erase_iter, vec_size, erase_nelmts, &nseq, &nelem, off, len) < 0)
-            HGOTO_ERROR(H5E_INTERNAL, H5E_UNSUPPORTED, 0, "sequence length generation failed");
+            HGOTO_ERROR(H5E_INTERNAL, H5E_UNSUPPORTED, FAIL, "sequence length generation failed");
 
-        /* Loop, while sequences left to process */
+        if (0 == nelem)
+            HGOTO_ERROR(H5E_INTERNAL, H5E_CANTGET, FAIL, "erase selection iterator made no progress");
+
         for (curr_seq = 0; curr_seq < nseq; curr_seq++) {
+            H5_CHECKED_ASSIGN(src_off, size_t, off[curr_seq], hsize_t);
 
-            /* Get the number of bytes in sequence */
-            curr_len = len[curr_seq];
-            curr_off = off[curr_seq];
-
-            /* Move down remaining elements (if any) beyond tot_erased_bytes but before the next erased block
-             */
-            if (tot_erased_bytes != 0 && (prev_persist_end_off < curr_off)) {
-                num_bytes = curr_off - prev_persist_end_off;
-                memmove((uint8_t *)buf + prev_persist_off, (uint8_t *)buf + prev_persist_end_off, num_bytes);
+            /* Copy surviving bytes before this erased sequence */
+            if (src_off > prev_end_off) {
+                keep_bytes = src_off - prev_end_off;
+                if (dst_off != prev_end_off)
+                    memmove((uint8_t *)buf + dst_off, (uint8_t *)buf + prev_end_off, keep_bytes);
+                dst_off += keep_bytes;
             }
 
-            tot_erased_bytes += curr_len;
-
-            persist_off      = curr_off + curr_len;
-            prev_persist_off = persist_off;
-
-            dst_off = persist_off - tot_erased_bytes;
-
-            persist_end_off      = persist_off + tot_erased_bytes;
-            prev_persist_end_off = persist_end_off;
-
-            /* Move down each block of elements not erased to the previous block of elements not erased */
-            if (tot_erased_bytes != 0 && persist_off < chk_nelmts) {
-                memmove((uint8_t *)buf + dst_off, (uint8_t *)buf + persist_off, tot_erased_bytes);
-            }
-            else
-                memset((uint8_t *)buf + dst_off, 0, tot_erased_bytes);
+            /* Skip this erased sequence */
+            prev_end_off = src_off + len[curr_seq];
+            total_erased_bytes += len[curr_seq];
         }
 
-        /* Decrement number of elements left to process */
         erase_nelmts -= nelem;
     }
 
-    /* Move down the last block of elements after the last erased block in the buffer */
-    if (tot_erased_bytes != 0 && (persist_end_off < chk_nelmts))
-        memmove((uint8_t *)buf + persist_off, (uint8_t *)buf + persist_end_off, tot_erased_bytes);
-
-    /* Take care of the last block of elements beyond tot_erased_bytes in the buffer */
-    tmp_off = persist_end_off + tot_erased_bytes;
-    if (tmp_off < chk_nelmts) {
-        num_bytes = chk_nelmts - tmp_off;
-        memmove((uint8_t *)buf + persist_end_off, (uint8_t *)buf + tmp_off, num_bytes);
-
-        tmp_off = persist_end_off + num_bytes;
-        if (tmp_off < chk_nelmts) {
-            num_bytes = chk_nelmts - tmp_off;
-            memset((uint8_t *)buf + tmp_off, 0, num_bytes);
-        }
+    /* Copy trailing surviving bytes after the last erased sequence */
+    if (prev_end_off < chk_nbytes) {
+        keep_bytes = chk_nbytes - prev_end_off;
+        if (dst_off != prev_end_off)
+            memmove((uint8_t *)buf + dst_off, (uint8_t *)buf + prev_end_off, keep_bytes);
+        dst_off += keep_bytes;
     }
 
-    chk->data_nbytes -= tot_erased_bytes;
+    /* Zero-fill the remainder of the buffer */
+    if (dst_off < chk_nbytes)
+        memset((uint8_t *)buf + dst_off, 0, chk_nbytes - dst_off);
 
-    /* Create dataspace without the erased elements */
-    if (NULL == (new_space = H5S__combine_select(chk->sel_space, H5S_SELECT_NOTB, flex_selection.vp)))
-        HGOTO_ERROR(H5E_DATASPACE, H5E_CANTINIT, FAIL, "unable to create hyperslab selection");
+    chk->data_nbytes -= total_erased_bytes;
 
-    new_nelmts = H5S_GET_SELECT_NPOINTS(new_space);
+    {
+        H5S_t  *full_chunk_space = NULL;
+        H5S_t  *remain_space     = NULL;
+        H5S_t  *intersect_base   = NULL;
+        int     ndims;
+        hsize_t dims[H5S_MAX_RANK];
+        hsize_t start[H5S_MAX_RANK];
+        hsize_t count[H5S_MAX_RANK];
+
+        ndims = H5S_GET_EXTENT_NDIMS(chk->sel_space);
+        if (ndims < 0)
+            HGOTO_ERROR(H5E_DATASPACE, H5E_CANTGET, FAIL, "unable to get chunk selection rank");
+
+        if (H5S_get_simple_extent_dims(chk->sel_space, dims, NULL) < 0)
+            HGOTO_ERROR(H5E_DATASPACE, H5E_CANTGET, FAIL, "unable to get chunk selection extent");
+
+        memset(start, 0, sizeof(start));
+        H5MM_memcpy(count, dims, sizeof(hsize_t) * (size_t)ndims);
+
+        /*
+         * Build an explicit hyperslab selection covering the full chunk extent.
+         * This gives us a hyperslab-backed space to subtract from safely.
+         */
+        if (NULL == (full_chunk_space = H5S_create_simple((unsigned)ndims, dims, NULL)))
+            HGOTO_ERROR(H5E_DATASPACE, H5E_CANTCREATE, FAIL, "unable to create full chunk dataspace");
+
+        if (H5S_select_hyperslab(full_chunk_space, H5S_SELECT_SET, start, NULL, count, NULL) < 0)
+            HGOTO_ERROR(H5E_DATASPACE, H5E_CANTSELECT, FAIL, "unable to select full chunk hyperslab");
+
+        /*
+         * remain_space = full_chunk_space minus selection
+         */
+        if (NULL ==
+            (remain_space = H5S__combine_select(full_chunk_space, H5S_SELECT_NOTB, flex_selection.vp)))
+            HGOTO_ERROR(H5E_DATASPACE, H5E_CANTINIT, FAIL, "unable to compute remaining chunk selection");
+
+        /*
+         * Intersect the remaining region with the currently defined values.
+         * This avoids assuming chk->sel_space itself is hyperslab-backed.
+         */
+
+        /* intersect_base must have the same selected-point count as chk->sel_space */
+        if (NULL == (intersect_base = H5S_copy(chk->sel_space, false, false)))
+            HGOTO_ERROR(H5E_DATASPACE, H5E_CANTCOPY, FAIL, "unable to copy chunk defined-value selection");
+
+        if (H5S_select_project_intersection(chk->sel_space, intersect_base, remain_space, &new_space, true) <
+            0)
+            HGOTO_ERROR(H5E_DATASPACE, H5E_CANTINIT, FAIL,
+                        "unable to intersect remaining region with defined values");
+
+        if (H5S_close(intersect_base) < 0)
+            HGOTO_ERROR(H5E_DATASPACE, H5E_CANTRELEASE, FAIL, "unable to close intersection base dataspace");
+        intersect_base = NULL;
+
+        if (H5S_close(remain_space) < 0)
+            HGOTO_ERROR(H5E_DATASPACE, H5E_CANTRELEASE, FAIL,
+                        "unable to close remaining selection dataspace");
+        remain_space = NULL;
+
+        if (H5S_close(full_chunk_space) < 0)
+            HGOTO_ERROR(H5E_DATASPACE, H5E_CANTRELEASE, FAIL, "unable to close full chunk dataspace");
+        full_chunk_space = NULL;
+    }
+
+    new_nelmts = (size_t)H5S_GET_SELECT_NPOINTS(new_space);
     assert(chk->data_nbytes == (new_nelmts * elmt_size));
 
     if (H5S_close(chk->sel_space) < 0)
-        HGOTO_ERROR(H5E_DATASET, H5E_CANTRELEASE, FAIL, "can't release dataspace");
+        HGOTO_ERROR(H5E_DATASET, H5E_CANTRELEASE, FAIL, "can't release old selection dataspace");
     chk->sel_space = new_space;
+    new_space      = NULL;
 
     *nbytes = chk->data_nbytes;
 
 done:
+    if (new_space && H5S_close(new_space) < 0)
+        HDONE_ERROR(H5E_DATASPACE, H5E_CANTRELEASE, FAIL, "can't release new selection dataspace");
     if (erase_iter_init && H5S_SELECT_ITER_RELEASE(erase_iter) < 0)
-        HDONE_ERROR(H5E_DATASET, H5E_CANTFREE, FAIL, "Can't release selection iterator");
+        HDONE_ERROR(H5E_DATASET, H5E_CANTFREE, FAIL, "can't release selection iterator");
     if (erase_iter)
         erase_iter = H5FL_FREE(H5S_sel_iter_t, erase_iter);
+    if (serial_values_space && H5S_close(serial_values_space) < 0)
+        HDONE_ERROR(H5E_DATASPACE, H5E_CANTRELEASE, FAIL, "can't release serial values dataspace");
+    if (serial_erase_space && H5S_close(serial_erase_space) < 0)
+        HDONE_ERROR(H5E_DATASPACE, H5E_CANTRELEASE, FAIL, "can't release serial erase dataspace");
+    if (len)
+        len = H5FL_SEQ_FREE(size_t, len);
+    if (off)
+        off = H5FL_SEQ_FREE(hsize_t, off);
 
     FUNC_LEAVE_NOAPI(ret_value)
-
 } /* H5D__struct_chunk_erase_values() */
 
 /*-------------------------------------------------------------------------
@@ -3651,13 +4223,18 @@ H5D__struct_chunk_evict_values(H5D_t *dset, size_t *nbytes /*in,out*/, size_t *a
     /* Sanity check */
     assert(dset);
 
-    chk->data_buf = H5MM_xfree(chk->data_buf);
+    size_t old_data_nbytes     = chk->data_nbytes;
+    size_t old_data_alloc_size = chk->data_alloc_size;
 
+    chk->data_buf        = H5MM_xfree(chk->data_buf);
     chk->data_nbytes     = 0;
     chk->data_alloc_size = 0;
 
-    *nbytes -= chk->data_nbytes;
-    *alloc_size -= chk->data_alloc_size;
+    assert(*nbytes >= old_data_nbytes);
+    assert(*alloc_size >= old_data_alloc_size);
+
+    *nbytes -= old_data_nbytes;
+    *alloc_size -= old_data_alloc_size;
 
     FUNC_LEAVE_NOAPI(SUCCEED)
 } /* H5D__struct_chunk_evict_values() */
@@ -3764,16 +4341,19 @@ H5D__struct_chunk_delete_chunk(H5D_t *dset, const hsize_t *scaled /*in*/, haddr_
         HGOTO_ERROR(H5E_DATASET, H5E_CANTGET, FAIL, "can't query chunk address");
 
     /* Remove the chunk from disk, if present */
-    if (H5_addr_defined(udata.chunk_block.offset) && H5_addr_eq(addr, udata.chunk_block.offset) &&
-        udata.chunk_block.length == disk_size) {
+    if (H5_addr_defined(udata.chunk_block.offset)) {
+        if (!H5_addr_eq(addr, udata.chunk_block.offset))
+            HGOTO_ERROR(H5E_DATASET, H5E_BADVALUE, FAIL, "structured chunk address changed before deletion");
 
-        /* Chunk index is calculated in idx_remove() based on scaled */
+        if (udata.chunk_block.length != disk_size)
+            HGOTO_ERROR(H5E_DATASET, H5E_SIZE_MISMATCH, FAIL,
+                        "structured chunk size changed before deletion");
+
         idx_udata.scaled = udata.common.scaled;
 
-        /* Remove the chunk from disk and index */
         if ((storage->ops->remove)(&idx_info, &idx_udata) < 0)
             HGOTO_ERROR(H5E_DATASET, H5E_CANTDELETE, FAIL, "unable to remove chunk entry from index");
-    } /* end if */
+    }
 
 done:
     FUNC_LEAVE_NOAPI(ret_value)

@@ -29,6 +29,7 @@
 /* Headers */
 /***********/
 #include "H5private.h"   /* Generic Functions                        */
+#include "H5SCprivate.h" /* Shared Chunk Cache                       */
 #include "H5ACprivate.h" /* Metadata cache                           */
 #include "H5Eprivate.h"  /* Error handling                           */
 #include "H5Fprivate.h"  /* Files                                    */
@@ -77,6 +78,12 @@
 /****************/
 
 /* ========= File Access properties ============ */
+/* Definitions for the initial shared chunk cache resize configuration */
+#define H5F_ACS_SCC_INIT_CONFIG_SIZE sizeof(H5SC__cache_config_t)
+#define H5F_ACS_SCC_INIT_CONFIG_DEF  H5SC__DEFAULT_SCC_CONFIG
+#define H5F_ACS_SCC_INIT_CONFIG_ENC  H5P__facc_scc_config_enc
+#define H5F_ACS_SCC_INIT_CONFIG_DEC  H5P__facc_scc_config_dec
+#define H5F_ACS_SCC_INIT_CONFIG_CMP  H5P__facc_scc_config_cmp
 /* Definitions for the initial metadata cache resize configuration */
 #define H5F_ACS_META_CACHE_INIT_CONFIG_SIZE sizeof(H5AC_cache_config_t)
 #define H5F_ACS_META_CACHE_INIT_CONFIG_DEF  H5AC__DEFAULT_CACHE_CONFIG
@@ -374,6 +381,9 @@ static int    H5P__facc_file_image_info_cmp(const void *value1, const void *valu
 static herr_t H5P__facc_file_image_info_close(const char *name, size_t size, void *value);
 
 /* encode & decode callbacks */
+static herr_t H5P__facc_scc_config_enc(const void *value, void **_pp, size_t *size);
+static herr_t H5P__facc_scc_config_dec(const void **_pp, void *value);
+static int    H5P__facc_scc_config_cmp(const void *value1, const void *value2, size_t size);
 static herr_t H5P__facc_cache_config_enc(const void *value, void **_pp, size_t *size);
 static herr_t H5P__facc_cache_config_dec(const void **_pp, void *value);
 static int    H5P__facc_cache_config_cmp(const void *value1, const void *value2, size_t size);
@@ -460,6 +470,8 @@ const H5P_libclass_t H5P_CLS_FACC[1] = {{
 /*******************/
 
 /* Property value defaults */
+static const H5SC__cache_config_t H5F_def_scc_initCfg_g =
+    H5SC__DEFAULT_SCC_CONFIG; /* def shared chunk cache config */
 static const H5AC_cache_config_t H5F_def_mdc_initCacheCfg_g =
     H5F_ACS_META_CACHE_INIT_CONFIG_DEF; /* Default metadata cache settings */
 static const size_t H5F_def_rdcc_nslots_g =
@@ -836,6 +848,12 @@ H5P__facc_reg_prop(H5P_genclass_t *pclass)
     if (H5P__register_real(pclass, H5F_ACS_RFIC_FLAGS_NAME, H5F_ACS_RFIC_FLAGS_SIZE, &H5F_def_rfic_flags_g,
                            NULL, NULL, NULL, H5F_ACS_RFIC_FLAGS_ENC, H5F_ACS_RFIC_FLAGS_DEC, NULL, NULL, NULL,
                            NULL) < 0)
+        HGOTO_ERROR(H5E_PLIST, H5E_CANTINSERT, FAIL, "can't insert property into class");
+
+    /* Register the initial shared chunk cache resize configuration */
+    if (H5P__register_real(pclass, H5F_ACS_SCC_INIT_CONFIG_NAME, H5F_ACS_SCC_INIT_CONFIG_SIZE,
+                           &H5F_def_scc_initCfg_g, NULL, NULL, NULL, H5F_ACS_SCC_INIT_CONFIG_ENC,
+                           H5F_ACS_SCC_INIT_CONFIG_DEC, NULL, NULL, H5F_ACS_SCC_INIT_CONFIG_CMP, NULL) < 0)
         HGOTO_ERROR(H5E_PLIST, H5E_CANTINSERT, FAIL, "can't insert property into class");
 
 done:
@@ -3312,6 +3330,89 @@ H5Pget_file_image_callbacks(hid_t fapl_id, H5FD_file_image_callbacks_t *callback
 done:
     FUNC_LEAVE_API(ret_value)
 } /* end H5Pget_file_image_callbacks() */
+
+/*-------------------------------------------------------------------------
+ * Function:    H5Pset_scc_config
+ *
+ * Purpose:    Set the initial shared chunk cache resize in the
+ *             target FAPL.
+ *
+ * Return:    Non-negative on success/Negative on failure
+ *
+ *-------------------------------------------------------------------------
+ */
+herr_t
+H5Pset_scc_config(hid_t plist_id, H5SC__cache_config_t *config_ptr)
+{
+    H5P_genplist_t *plist;               /* Property list pointer */
+    herr_t          ret_value = SUCCEED; /* return value */
+
+    FUNC_ENTER_API(FAIL)
+
+    /* Get the plist structure */
+    if (NULL == (plist = H5P_object_verify(plist_id, H5P_FILE_ACCESS, false)))
+        HGOTO_ERROR(H5E_ID, H5E_BADID, FAIL, "can't find object for ID");
+
+    /* validate the new configuration */
+    if (H5SC_validate_config(config_ptr) < 0)
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL, "invalid shared chunk cache configuration");
+
+    /* If we ever support multiple versions of H5SC__cache_config_t, we
+     * will have to test the version and do translation here.
+     */
+
+    /* set the modified config */
+    if (H5P_set(plist, H5F_ACS_SCC_INIT_CONFIG_NAME, config_ptr) < 0)
+        HGOTO_ERROR(H5E_PLIST, H5E_CANTSET, FAIL, "can't set shared chunk cache initial config");
+
+done:
+    FUNC_LEAVE_API(ret_value)
+} /* H5Pset_scc_config() */
+
+/*-------------------------------------------------------------------------
+ * Function:    H5Pget_scc_config
+ *
+ * Purpose:    Retrieve the shared chunk cache initial configuration
+ *             from the target FAPL.
+ *
+ *             Observe that the function will fail if config is
+ *             NULL, or if config_ptr->version specifies an unknown
+ *             version of H5AC_cache_config_t.
+ *
+ * Return:    Non-negative on success/Negative on failure
+ *
+ *-------------------------------------------------------------------------
+ */
+herr_t
+H5Pget_scc_config(hid_t plist_id, H5SC__cache_config_t *config /*out*/)
+{
+    H5P_genplist_t *plist;               /* Property list pointer */
+    herr_t          ret_value = SUCCEED; /* return value */
+
+    FUNC_ENTER_API(FAIL)
+
+    /* Get the plist structure */
+    if (NULL == (plist = H5P_object_verify(plist_id, H5P_FILE_ACCESS, true)))
+        HGOTO_ERROR(H5E_ID, H5E_BADID, FAIL, "can't find object for ID");
+
+    /* validate the config ptr */
+    if (config == NULL)
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL, "NULL config ptr on entry.");
+    if (config->version != H5SC__CURR_SCC_VERSION)
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL, "Unknown config version.");
+
+    /* If we ever support multiple versions of H5SC__cache_config_t, we
+     * will have to get the canonical version here, and then translate
+     * to the version of the structure supplied.
+     */
+
+    /* Get the current initial metadata cache resize configuration */
+    if (H5P_get(plist, H5F_ACS_SCC_INIT_CONFIG_NAME, config) < 0)
+        HGOTO_ERROR(H5E_PLIST, H5E_CANTGET, FAIL, "can't get shared chunk cache initial config");
+
+done:
+    FUNC_LEAVE_API(ret_value)
+} /* H5Pget_scc_config() */
 
 /*-------------------------------------------------------------------------
  * Function:    H5P__file_image_info_copy
@@ -6345,3 +6446,171 @@ H5Pget_relax_file_integrity_checks(hid_t plist_id, uint64_t *flags /*out*/)
 done:
     FUNC_LEAVE_API(ret_value)
 } /* end H5Pget_relax_file_integrity_checks() */
+
+/*-------------------------------------------------------------------------
+ * Function: H5P__facc_scc_config_cmp
+ *
+ * Purpose: Compare two shared chunk cache configurations.
+ *
+ * Return: positive if VALUE1 is greater than VALUE2, negative if VALUE2 is
+ *        greater than VALUE1 and zero if VALUE1 and VALUE2 are equal.
+ *
+ *-------------------------------------------------------------------------
+ */
+static int
+H5P__facc_scc_config_cmp(const void *_config1, const void *_config2, size_t H5_ATTR_UNUSED size)
+{
+    const H5SC__cache_config_t *config1 =
+        (const H5SC__cache_config_t *)_config1; /* Create local aliases for values */
+    const H5SC__cache_config_t *config2 =
+        (const H5SC__cache_config_t *)_config2; /* Create local aliases for values */
+    int ret_value = 0;                          /* Return value */
+
+    FUNC_ENTER_PACKAGE_NOERR
+
+    /* Check for a property being set */
+    if (config1 == NULL && config2 != NULL)
+        HGOTO_DONE(-1);
+    if (config1 != NULL && config2 == NULL)
+        HGOTO_DONE(1);
+
+    if (config1->version < config2->version)
+        HGOTO_DONE(-1);
+    if (config1->version > config2->version)
+        HGOTO_DONE(1);
+
+    if (config1->max_q_size < config2->max_q_size)
+        HGOTO_DONE(-1);
+    if (config1->max_q_size > config2->max_q_size)
+        HGOTO_DONE(1);
+
+    if (config1->max_a_size < config2->max_a_size)
+        HGOTO_DONE(-1);
+    if (config1->max_a_size > config2->max_a_size)
+        HGOTO_DONE(1);
+
+done:
+    FUNC_LEAVE_NOAPI(ret_value)
+} /* end H5P__facc_scc_config_cmp() */
+
+/*-------------------------------------------------------------------------
+ * Function:       H5P__facc_scc_config_enc
+ *
+ * Purpose:        Callback routine which is called whenever the default
+ *                 shared chunk cache config property in the file creation
+ *                 property list is encoded.
+ *
+ * Return:       Success:    Non-negative
+ *           Failure:    Negative
+ *
+ *-------------------------------------------------------------------------
+ */
+static herr_t
+H5P__facc_scc_config_enc(const void *value, void **_pp, size_t *size)
+{
+    const H5SC__cache_config_t *config =
+        (const H5SC__cache_config_t *)value; /* Create local aliases for values */
+    uint8_t **pp = (uint8_t **)_pp;
+    unsigned  enc_size;  /* Size of encoded property */
+    uint64_t  enc_value; /* Property to encode */
+
+    FUNC_ENTER_PACKAGE_NOERR
+
+    /* Sanity check */
+    assert(value);
+    HDcompile_assert(sizeof(size_t) <= sizeof(uint64_t));
+
+    if (NULL != *pp) {
+        /* Encode type sizes (as a safety check) */
+        *(*pp)++ = (uint8_t)sizeof(unsigned);
+        *(*pp)++ = (uint8_t)sizeof(double);
+
+        /* int */
+        INT32ENCODE(*pp, (int32_t)config->version);
+
+        enc_value = (uint64_t)config->max_q_size;
+        enc_size  = H5VM_limit_enc_size(enc_value);
+        assert(enc_size < 256);
+        *(*pp)++ = (uint8_t)enc_size;
+        UINT64ENCODE_VAR(*pp, enc_value, enc_size);
+
+        enc_value = (uint64_t)config->max_a_size;
+        enc_size  = H5VM_limit_enc_size(enc_value);
+        assert(enc_size < 256);
+        *(*pp)++ = (uint8_t)enc_size;
+        UINT64ENCODE_VAR(*pp, enc_value, enc_size);
+
+    } /* end if */
+
+    /* Compute encoded size of variably-encoded values */
+    enc_value = (uint64_t)config->max_q_size;
+    *size += 1 + H5VM_limit_enc_size(enc_value);
+
+    enc_value = (uint64_t)config->max_a_size;
+    *size += 1 + H5VM_limit_enc_size(enc_value);
+
+    /* Compute encoded size of fixed-size values */
+    *size += (sizeof(int32_t) * 1);
+
+    /* add two bytes for the sizes of unsigned and double */
+    *size += 2;
+
+    FUNC_LEAVE_NOAPI(SUCCEED)
+} /* end H5P__facc_scc_config_enc() */
+
+/*-------------------------------------------------------------------------
+ * Function:       H5P__facc_scc_config_dec
+ *
+ * Purpose:        Callback routine which is called whenever the default
+ *                 shared chunk cache config property in the file creation
+ *                 property list is decoded.
+ *
+ * Return:         Success:    Non-negative
+ *                 Failure:    Negative
+ *
+ *-------------------------------------------------------------------------
+ */
+static herr_t
+H5P__facc_scc_config_dec(const void **_pp, void *_value)
+{
+    H5SC__cache_config_t *config = (H5SC__cache_config_t *)_value;
+    const uint8_t       **pp     = (const uint8_t **)_pp;
+    unsigned              enc_size;
+    uint64_t              enc_value;
+    herr_t                ret_value = SUCCEED; /* Return value */
+
+    FUNC_ENTER_PACKAGE
+
+    /* Sanity checks */
+    assert(pp);
+    assert(*pp);
+    assert(config);
+    HDcompile_assert(sizeof(size_t) <= sizeof(uint64_t));
+
+    /* Set property to default value */
+    H5MM_memcpy(config, &H5F_def_scc_initCfg_g, sizeof(H5SC__cache_config_t));
+
+    /* Decode type sizes */
+    enc_size = *(*pp)++;
+    if (enc_size != sizeof(unsigned))
+        HGOTO_ERROR(H5E_PLIST, H5E_BADVALUE, FAIL, "unsigned value can't be decoded");
+    enc_size = *(*pp)++;
+    if (enc_size != sizeof(double))
+        HGOTO_ERROR(H5E_PLIST, H5E_BADVALUE, FAIL, "double value can't be decoded");
+
+    /* int */
+    INT32DECODE(*pp, config->version);
+
+    enc_size = *(*pp)++;
+    assert(enc_size < 256);
+    UINT64DECODE_VAR(*pp, enc_value, enc_size);
+    config->max_q_size = (size_t)enc_value;
+
+    enc_size = *(*pp)++;
+    assert(enc_size < 256);
+    UINT64DECODE_VAR(*pp, enc_value, enc_size);
+    config->max_a_size = (size_t)enc_value;
+
+done:
+    FUNC_LEAVE_NOAPI(ret_value)
+} /* end H5P__facc_scc_config_dec() */
