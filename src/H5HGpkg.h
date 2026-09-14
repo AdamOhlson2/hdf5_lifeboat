@@ -178,9 +178,9 @@ struct H5HG_heap_t {
 };
 
 struct H5HG_local_heapset_t {
-    size_t nslots; /* High-water number of descriptor-visible heap slots */
-    size_t nalloc; /* Number of allocated trailing heap-pointer slots */
-    size_t nlive;  /* Total live payload objects across all member heaps */
+    size_t nslots;     /* High-water number of descriptor-visible heap slots */
+    size_t nalloc;     /* Number of allocated trailing heap-pointer slots */
+    size_t nlive;      /* Total live payload objects across all member heaps */
     size_t alloc_size; /* Resident allocation owned by this heap set */
 
     H5HG_heap_t *heaps[]; /* Stable heap slots; unused entries are NULL */

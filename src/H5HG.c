@@ -1063,7 +1063,7 @@ done:
     }
 
     FUNC_LEAVE_NOAPI(ret_value)
-    
+
 } /* end H5HG__create_local() */
 
 /*-------------------------------------------------------------------------
@@ -1498,7 +1498,6 @@ H5HG__remove_local(H5F_t *f, H5HG_heap_t *heap, size_t idx, hbool_t *heap_empty)
 
             heap->obj[u].begin -= need;
         }
-
     }
 
     /*
@@ -1917,7 +1916,7 @@ H5HG__decode_local(H5F_t *f, const void *image, size_t len)
                  */
                 need = H5HG_SIZEOF_OBJHDR(f) + aligned_size;
 
-                if ((size_t)idx > max_idx) { 
+                if ((size_t)idx > max_idx) {
 
                     max_idx = (size_t)idx;
                 }
@@ -1977,8 +1976,7 @@ done:
     if (heap) {
 
         if (H5HG__free_local(heap) < 0)
-            HDONE_ERROR(H5E_HEAP, H5E_CANTFREE, NULL, 
-                        "unable to destroy partially decoded chunk-local heap");
+            HDONE_ERROR(H5E_HEAP, H5E_CANTFREE, NULL, "unable to destroy partially decoded chunk-local heap");
     }
 
     FUNC_LEAVE_NOAPI(ret_value)
@@ -2019,9 +2017,9 @@ done:
 static herr_t
 H5HG__local_heap_alloc_size(const H5HG_heap_t *heap, size_t *size_out)
 {
-    size_t total;                   /* Total resident allocation */
-    size_t obj_size;                /* Allocated object-table size */
-    herr_t ret_value = SUCCEED;     /* Return value */
+    size_t total;               /* Total resident allocation */
+    size_t obj_size;            /* Allocated object-table size */
+    herr_t ret_value = SUCCEED; /* Return value */
 
     FUNC_ENTER_PACKAGE
 
@@ -2034,22 +2032,19 @@ H5HG__local_heap_alloc_size(const H5HG_heap_t *heap, size_t *size_out)
 
     /* Compute the allocated object-table size without overflowing size_t */
     if (heap->nalloc > SIZE_MAX / sizeof(heap->obj[0]))
-        HGOTO_ERROR(H5E_HEAP, H5E_OVERFLOW, FAIL,
-                    "local heap object-table allocation size overflow");
+        HGOTO_ERROR(H5E_HEAP, H5E_OVERFLOW, FAIL, "local heap object-table allocation size overflow");
 
     obj_size = heap->nalloc * sizeof(heap->obj[0]);
 
     /* Add the heap structure and serialized heap image safely */
     if (heap->size > SIZE_MAX - sizeof(*heap))
-        HGOTO_ERROR(H5E_HEAP, H5E_OVERFLOW, FAIL,
-                    "local heap allocation size overflow");
+        HGOTO_ERROR(H5E_HEAP, H5E_OVERFLOW, FAIL, "local heap allocation size overflow");
 
     total = sizeof(*heap) + heap->size;
 
     /* Add the allocated object table safely */
     if (obj_size > SIZE_MAX - total)
-        HGOTO_ERROR(H5E_HEAP, H5E_OVERFLOW, FAIL,
-                    "local heap allocation size overflow");
+        HGOTO_ERROR(H5E_HEAP, H5E_OVERFLOW, FAIL, "local heap allocation size overflow");
 
     total += obj_size;
 
@@ -2108,7 +2103,7 @@ H5HG__get_local_heapset_alloc_size(const H5HG_local_heapset_t *heapset, size_t *
      * chunk-local VL payload storage.
      */
     if (NULL == heapset) {
-        
+
         *size_out = 0;
     }
     else {
@@ -2247,30 +2242,25 @@ H5HG__grow_local_heapset(H5HG_local_heapset_t **heapset_ptr, size_t min_nalloc)
     assert(*heapset_ptr);
 
     if (NULL == heapset_ptr || NULL == *heapset_ptr)
-        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL,
-                    "invalid chunk-local heap-set pointer");
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL, "invalid chunk-local heap-set pointer");
 
     heapset = *heapset_ptr;
 
     if (0 == heapset->nalloc)
-        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, FAIL,
-                    "chunk-local heap set has zero allocated capacity");
+        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, FAIL, "chunk-local heap set has zero allocated capacity");
 
     if (heapset->nalloc > H5HG_LOCAL_MAX_HEAP_SLOTS)
-        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, FAIL,
-                    "chunk-local heap-set capacity is inconsistent");
+        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, FAIL, "chunk-local heap-set capacity is inconsistent");
 
     if (heapset->nslots > heapset->nalloc)
         HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, FAIL,
                     "chunk-local heap-set slot count exceeds allocated capacity");
 
     if (0 == min_nalloc)
-        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL,
-                    "zero chunk-local heap-set capacity requested");
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL, "zero chunk-local heap-set capacity requested");
 
     if (min_nalloc > H5HG_LOCAL_MAX_HEAP_SLOTS)
-        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL,
-                    "chunk-local heap-set slot limit exceeded");
+        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL, "chunk-local heap-set slot limit exceeded");
 
     if (min_nalloc <= heapset->nalloc)
         HGOTO_DONE(SUCCEED);
@@ -2286,18 +2276,15 @@ H5HG__grow_local_heapset(H5HG_local_heapset_t **heapset_ptr, size_t min_nalloc)
      * publishing the new pointer.
      */
     if ((new_nalloc - old_nalloc) > SIZE_MAX / sizeof(heapset->heaps[0]))
-        HGOTO_ERROR(H5E_HEAP, H5E_OVERFLOW, FAIL,
-                    "heap-set allocation growth overflow");
+        HGOTO_ERROR(H5E_HEAP, H5E_OVERFLOW, FAIL, "heap-set allocation growth overflow");
 
     growth_size = (new_nalloc - old_nalloc) * sizeof(heapset->heaps[0]);
 
     if (growth_size > SIZE_MAX - heapset->alloc_size)
-        HGOTO_ERROR(H5E_HEAP, H5E_OVERFLOW, FAIL,
-                    "heap-set resident allocation overflow");
+        HGOTO_ERROR(H5E_HEAP, H5E_OVERFLOW, FAIL, "heap-set resident allocation overflow");
 
     if (new_nalloc > ((SIZE_MAX - sizeof(*heapset)) / sizeof(heapset->heaps[0])))
-        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL,
-                    "chunk-local heap-set allocation size overflow");
+        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL, "chunk-local heap-set allocation size overflow");
 
     alloc_size = sizeof(*heapset) + new_nalloc * sizeof(heapset->heaps[0]);
 
@@ -2306,14 +2293,12 @@ H5HG__grow_local_heapset(H5HG_local_heapset_t **heapset_ptr, size_t min_nalloc)
      * operation that can fail.
      */
     if (NULL == (new_heapset = H5MM_realloc(heapset, alloc_size)))
-        HGOTO_ERROR(H5E_RESOURCE, H5E_NOSPACE, FAIL,
-                    "unable to enlarge chunk-local heap set");
+        HGOTO_ERROR(H5E_RESOURCE, H5E_NOSPACE, FAIL, "unable to enlarge chunk-local heap set");
 
-    memset(&new_heapset->heaps[old_nalloc], 0,
-           (new_nalloc - old_nalloc) * sizeof(new_heapset->heaps[0]));
+    memset(&new_heapset->heaps[old_nalloc], 0, (new_nalloc - old_nalloc) * sizeof(new_heapset->heaps[0]));
 
     new_heapset->alloc_size += growth_size;
-    new_heapset->nalloc      = new_nalloc;
+    new_heapset->nalloc = new_nalloc;
 
     /*
      * realloc() may have moved the flexible-array object.
@@ -2474,8 +2459,7 @@ H5HG__free_local_heapset(H5HG_local_heapset_t *heapset)
 
         if (heapset->heaps[u]) {
             if (H5HG__free_local(heapset->heaps[u]) < 0)
-                HDONE_ERROR(H5E_HEAP, H5E_CANTFREE, FAIL, 
-                            "unable to free member chunk-local heap");
+                HDONE_ERROR(H5E_HEAP, H5E_CANTFREE, FAIL, "unable to free member chunk-local heap");
         }
     }
 
@@ -2514,25 +2498,25 @@ herr_t
 H5HG__insert_local_heapset(H5F_t *f, H5HG_local_heapset_t **heapset_ptr, size_t size, const void *obj,
                            uint16_t *heap_slot_out, uint16_t *obj_idx_out)
 {
-    H5HG_local_heapset_t *heapset          = NULL;     /* Current heap-set manager */
-    H5HG_heap_t          *heap             = NULL;     /* Member heap being examined */
-    H5HG_heap_t          *selected_heap    = NULL;     /* Existing heap selected for insertion */
-    H5HG_heap_t          *new_heap         = NULL;     /* Newly created member heap */
-    size_t                aligned_size     = 0;        /* Aligned payload size */
-    size_t                need             = 0;        /* Complete encoded object extent */
-    size_t                min_heap_size    = 0;        /* Minimum heap size for new member */
-    size_t                heap_size        = 0;        /* Size selected for new member */
-    size_t                free_slot        = SIZE_MAX; /* First reusable NULL stable slot */
-    size_t                slot             = SIZE_MAX; /* Selected stable heap-slot index */
-    size_t                selected_slot    = SIZE_MAX; /* Slot of selected existing heap */
-    size_t                obj_idx          = 0;        /* Per-heap object index */
-    size_t                member_alloc_size = 0;       /* Resident allocation of new member heap */
-    size_t                old_obj_nalloc   = 0;        /* Existing member object-table capacity */
-    size_t                new_obj_nalloc   = 0;        /* Expected capacity after table growth */
-    size_t                added_obj_bytes  = 0;        /* Resident bytes added by table growth */
-    hbool_t               created_heapset  = false;    /* This call created outer manager */
-    hbool_t               oversized        = false;    /* Object requires dedicated large heap */
-    herr_t                ret_value        = SUCCEED;  /* Return value */
+    H5HG_local_heapset_t *heapset           = NULL;     /* Current heap-set manager */
+    H5HG_heap_t          *heap              = NULL;     /* Member heap being examined */
+    H5HG_heap_t          *selected_heap     = NULL;     /* Existing heap selected for insertion */
+    H5HG_heap_t          *new_heap          = NULL;     /* Newly created member heap */
+    size_t                aligned_size      = 0;        /* Aligned payload size */
+    size_t                need              = 0;        /* Complete encoded object extent */
+    size_t                min_heap_size     = 0;        /* Minimum heap size for new member */
+    size_t                heap_size         = 0;        /* Size selected for new member */
+    size_t                free_slot         = SIZE_MAX; /* First reusable NULL stable slot */
+    size_t                slot              = SIZE_MAX; /* Selected stable heap-slot index */
+    size_t                selected_slot     = SIZE_MAX; /* Slot of selected existing heap */
+    size_t                obj_idx           = 0;        /* Per-heap object index */
+    size_t                member_alloc_size = 0;        /* Resident allocation of new member heap */
+    size_t                old_obj_nalloc    = 0;        /* Existing member object-table capacity */
+    size_t                new_obj_nalloc    = 0;        /* Expected capacity after table growth */
+    size_t                added_obj_bytes   = 0;        /* Resident bytes added by table growth */
+    hbool_t               created_heapset   = false;    /* This call created outer manager */
+    hbool_t               oversized         = false;    /* Object requires dedicated large heap */
+    herr_t                ret_value         = SUCCEED;  /* Return value */
 
     FUNC_ENTER_PACKAGE
 
@@ -2547,8 +2531,7 @@ H5HG__insert_local_heapset(H5F_t *f, H5HG_local_heapset_t **heapset_ptr, size_t 
      * actual payload bytes to copy.
      */
     if ((size > 0) && (NULL == obj))
-        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL,
-                    "non-empty chunk-local payload has no source buffer");
+        HGOTO_ERROR(H5E_ARGS, H5E_BADVALUE, FAIL, "non-empty chunk-local payload has no source buffer");
 
     /* Do not expose stale output values after a failed insertion. */
     *heap_slot_out = 0;
@@ -2558,19 +2541,16 @@ H5HG__insert_local_heapset(H5F_t *f, H5HG_local_heapset_t **heapset_ptr, size_t 
     aligned_size = H5HG_ALIGN(size);
 
     if (aligned_size < size)
-        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL,
-                    "chunk-local object size overflow");
+        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL, "chunk-local object size overflow");
 
     if (aligned_size > (SIZE_MAX - H5HG_SIZEOF_OBJHDR(f)))
-        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL,
-                    "chunk-local object extent overflow");
+        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL, "chunk-local object extent overflow");
 
     need = H5HG_SIZEOF_OBJHDR(f) + aligned_size;
 
     /* A newly created member heap also requires its collection header. */
     if (need > (SIZE_MAX - H5HG_SIZEOF_HDR(f)))
-        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL,
-                    "chunk-local heap size overflow");
+        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL, "chunk-local heap size overflow");
 
     min_heap_size = H5HG_SIZEOF_HDR(f) + need;
 
@@ -2586,8 +2566,7 @@ H5HG__insert_local_heapset(H5F_t *f, H5HG_local_heapset_t **heapset_ptr, size_t 
      */
     if (NULL == *heapset_ptr) {
         if (NULL == (*heapset_ptr = H5HG__create_local_heapset()))
-            HGOTO_ERROR(H5E_HEAP, H5E_CANTINIT, FAIL,
-                        "unable to create chunk-local heap set");
+            HGOTO_ERROR(H5E_HEAP, H5E_CANTINIT, FAIL, "unable to create chunk-local heap set");
 
         created_heapset = true;
     }
@@ -2595,11 +2574,9 @@ H5HG__insert_local_heapset(H5F_t *f, H5HG_local_heapset_t **heapset_ptr, size_t 
     heapset = *heapset_ptr;
 
     /* Validate manager state before indexing its trailing pointer array. */
-    if ((0 == heapset->nalloc) ||
-        (heapset->nslots > heapset->nalloc) ||
+    if ((0 == heapset->nalloc) || (heapset->nslots > heapset->nalloc) ||
         (heapset->nalloc > H5HG_LOCAL_MAX_HEAP_SLOTS))
-        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, FAIL,
-                    "invalid chunk-local heap-set state");
+        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, FAIL, "invalid chunk-local heap-set state");
 
     assert(heapset->nslots <= heapset->nalloc);
 
@@ -2624,9 +2601,7 @@ H5HG__insert_local_heapset(H5F_t *f, H5HG_local_heapset_t **heapset_ptr, size_t 
 
         assert(heap->nlive <= H5HG_MAXIDX);
 
-        if ((!oversized) &&
-            (heap->size <= H5HG_LOCAL_NORMAL_HEAP_SIZE) &&
-            (heap->nlive < H5HG_MAXIDX) &&
+        if ((!oversized) && (heap->size <= H5HG_LOCAL_NORMAL_HEAP_SIZE) && (heap->nlive < H5HG_MAXIDX) &&
             (heap->obj[0].size >= need)) {
 
             selected_heap = heap;
@@ -2649,23 +2624,18 @@ H5HG__insert_local_heapset(H5F_t *f, H5HG_local_heapset_t **heapset_ptr, size_t 
          * index lies beyond the current object table, predict the same growth
          * that H5HG__alloc() will perform.
          */
-        if ((selected_heap->nused <= H5HG_MAXIDX) &&
-            (selected_heap->nused >= selected_heap->nalloc)) {
+        if ((selected_heap->nused <= H5HG_MAXIDX) && (selected_heap->nused >= selected_heap->nalloc)) {
 
             new_obj_nalloc =
-                MIN(MAX(selected_heap->nalloc * 2,
-                        selected_heap->nused + 1),
-                    ((size_t)H5HG_MAXIDX + 1));
+                MIN(MAX(selected_heap->nalloc * 2, selected_heap->nused + 1), ((size_t)H5HG_MAXIDX + 1));
 
             assert(new_obj_nalloc > old_obj_nalloc);
 
-            if ((new_obj_nalloc - old_obj_nalloc) >
-                SIZE_MAX / sizeof(selected_heap->obj[0]))
+            if ((new_obj_nalloc - old_obj_nalloc) > SIZE_MAX / sizeof(selected_heap->obj[0]))
                 HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL,
                             "chunk-local object-table allocation growth overflow");
 
-            added_obj_bytes = (new_obj_nalloc - old_obj_nalloc) *
-                               sizeof(selected_heap->obj[0]);
+            added_obj_bytes = (new_obj_nalloc - old_obj_nalloc) * sizeof(selected_heap->obj[0]);
 
             if ((added_obj_bytes) > (SIZE_MAX - heapset->alloc_size))
                 HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL,
@@ -2673,8 +2643,7 @@ H5HG__insert_local_heapset(H5F_t *f, H5HG_local_heapset_t **heapset_ptr, size_t 
         }
 
         if (H5HG__insert_local(f, selected_heap, size, obj, &obj_idx) < 0)
-            HGOTO_ERROR(H5E_HEAP, H5E_CANTINSERT, FAIL,
-                        "unable to insert object into chunk-local heap");
+            HGOTO_ERROR(H5E_HEAP, H5E_CANTINSERT, FAIL, "unable to insert object into chunk-local heap");
 
         assert(obj_idx > 0);
         assert(obj_idx <= UINT16_MAX);
@@ -2688,8 +2657,8 @@ H5HG__insert_local_heapset(H5F_t *f, H5HG_local_heapset_t **heapset_ptr, size_t 
          */
         if (selected_heap->nalloc > old_obj_nalloc) {
 
-            size_t actual_added_bytes = (selected_heap->nalloc - old_obj_nalloc) *
-                                         sizeof(selected_heap->obj[0]);
+            size_t actual_added_bytes =
+                (selected_heap->nalloc - old_obj_nalloc) * sizeof(selected_heap->obj[0]);
 
             assert(actual_added_bytes == added_obj_bytes);
 
@@ -2714,15 +2683,13 @@ H5HG__insert_local_heapset(H5F_t *f, H5HG_local_heapset_t **heapset_ptr, size_t 
     }
     else {
         if (heapset->nslots >= H5HG_LOCAL_MAX_HEAP_SLOTS)
-            HGOTO_ERROR(H5E_HEAP, H5E_NOSPACE, FAIL,
-                        "chunk-local heap-slot space is exhausted");
+            HGOTO_ERROR(H5E_HEAP, H5E_NOSPACE, FAIL, "chunk-local heap-slot space is exhausted");
 
         slot = heapset->nslots;
 
         if (slot >= heapset->nalloc) {
             if (H5HG__grow_local_heapset(heapset_ptr, slot + 1) < 0)
-                HGOTO_ERROR(H5E_HEAP, H5E_CANTALLOC, FAIL,
-                            "unable to grow chunk-local heap set");
+                HGOTO_ERROR(H5E_HEAP, H5E_CANTALLOC, FAIL, "unable to grow chunk-local heap set");
 
             /* realloc() may have moved the outer manager. */
             heapset = *heapset_ptr;
@@ -2736,8 +2703,7 @@ H5HG__insert_local_heapset(H5F_t *f, H5HG_local_heapset_t **heapset_ptr, size_t 
     heap_size = oversized ? min_heap_size : H5HG_LOCAL_NORMAL_HEAP_SIZE;
 
     if (NULL == (new_heap = H5HG__create_local(f, heap_size)))
-        HGOTO_ERROR(H5E_HEAP, H5E_CANTINIT, FAIL,
-                    "unable to create chunk-local member heap");
+        HGOTO_ERROR(H5E_HEAP, H5E_CANTINIT, FAIL, "unable to create chunk-local member heap");
 
     /*
      * Insert before publishing the new heap into the stable slot. Until
@@ -2745,8 +2711,7 @@ H5HG__insert_local_heapset(H5F_t *f, H5HG_local_heapset_t **heapset_ptr, size_t 
      * if anything fails.
      */
     if (H5HG__insert_local(f, new_heap, size, obj, &obj_idx) < 0)
-        HGOTO_ERROR(H5E_HEAP, H5E_CANTINSERT, FAIL,
-                    "unable to insert object into new chunk-local heap");
+        HGOTO_ERROR(H5E_HEAP, H5E_CANTINSERT, FAIL, "unable to insert object into new chunk-local heap");
 
     assert(obj_idx > 0);
     assert(obj_idx <= UINT16_MAX);
@@ -2757,12 +2722,10 @@ H5HG__insert_local_heapset(H5F_t *f, H5HG_local_heapset_t **heapset_ptr, size_t 
      * before publishing it into the heap set.
      */
     if (H5HG__local_heap_alloc_size(new_heap, &member_alloc_size) < 0)
-        HGOTO_ERROR(H5E_HEAP, H5E_CANTGET, FAIL,
-                    "unable to calculate member heap allocation");
+        HGOTO_ERROR(H5E_HEAP, H5E_CANTGET, FAIL, "unable to calculate member heap allocation");
 
     if ((member_alloc_size) > (SIZE_MAX - heapset->alloc_size))
-        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL,
-                    "chunk-local heap-set resident allocation overflow");
+        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, FAIL, "chunk-local heap-set resident allocation overflow");
 
     /*
      * Publish the fully constructed member. After this point the heap set
@@ -2794,21 +2757,17 @@ done:
     if (new_heap) {
 
         if (H5HG__free_local(new_heap) < 0)
-            HDONE_ERROR(H5E_HEAP, H5E_CANTFREE, FAIL,
-                        "unable to free uncommitted chunk-local heap");
+            HDONE_ERROR(H5E_HEAP, H5E_CANTFREE, FAIL, "unable to free uncommitted chunk-local heap");
     }
 
     /*
      * Restore the original NULL state when this operation created an outer
      * manager but failed before publishing a live payload.
      */
-    if ((ret_value < 0) && (created_heapset) && (*heapset_ptr) &&
-        (0 == (*heapset_ptr)->nlive)) 
-    {
+    if ((ret_value < 0) && (created_heapset) && (*heapset_ptr) && (0 == (*heapset_ptr)->nlive)) {
 
         if (H5HG__free_local_heapset(*heapset_ptr) < 0)
-            HDONE_ERROR(H5E_HEAP, H5E_CANTFREE, FAIL,
-                        "unable to free unused chunk-local heap set");
+            HDONE_ERROR(H5E_HEAP, H5E_CANTFREE, FAIL, "unable to free unused chunk-local heap set");
 
         *heapset_ptr = NULL;
     }
@@ -2903,10 +2862,10 @@ done:
 herr_t
 H5HG__remove_local_heapset(H5F_t *f, H5HG_local_heapset_t *heapset, uint16_t heap_slot, uint16_t obj_idx)
 {
-    H5HG_heap_t *heap       = NULL;     /* Member heap containing referenced object */
-    hbool_t      heap_empty = false;    /* Whether member heap became empty after removal */
-    size_t       member_alloc_size = 0; /* Member allocation size */
-    herr_t       ret_value  = SUCCEED;  /* Return value */
+    H5HG_heap_t *heap              = NULL;    /* Member heap containing referenced object */
+    hbool_t      heap_empty        = false;   /* Whether member heap became empty after removal */
+    size_t       member_alloc_size = 0;       /* Member allocation size */
+    herr_t       ret_value         = SUCCEED; /* Return value */
 
     FUNC_ENTER_PACKAGE
 
@@ -2948,13 +2907,11 @@ H5HG__remove_local_heapset(H5F_t *f, H5HG_local_heapset_t *heapset, uint16_t hea
      * subtracted from HEAPSET->ALLOC_SIZE before the member is released.
      */
     if (H5HG__local_heap_alloc_size(heap, &member_alloc_size) < 0)
-        HGOTO_ERROR(H5E_HEAP, H5E_CANTGET, FAIL,
-                    "unable to calculate member heap allocation");
+        HGOTO_ERROR(H5E_HEAP, H5E_CANTGET, FAIL, "unable to calculate member heap allocation");
 
     if (member_alloc_size > heapset->alloc_size)
-        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, FAIL,
-                    "heap-set allocation accounting is inconsistent");
-    
+        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, FAIL, "heap-set allocation accounting is inconsistent");
+
     /*
      * H5HG__remove_local() now succeeds only when one real live object is
      * actually removed. Therefore one successful call corresponds to
@@ -2976,8 +2933,7 @@ H5HG__remove_local_heapset(H5F_t *f, H5HG_local_heapset_t *heapset, uint16_t hea
         assert(0 == heap->nlive);
 
         if (H5HG__free_local(heap) < 0)
-            HGOTO_ERROR(H5E_HEAP, H5E_CANTFREE, FAIL,
-                        "unable to free empty chunk-local heap");
+            HGOTO_ERROR(H5E_HEAP, H5E_CANTFREE, FAIL, "unable to free empty chunk-local heap");
 
         heapset->alloc_size -= member_alloc_size;
         heapset->heaps[heap_slot] = NULL;
@@ -3253,15 +3209,15 @@ done:
 H5HG_local_heapset_t *
 H5HG__decode_local_heapset(H5F_t *f, const void *image, size_t len)
 {
-    const uint8_t        *p              = (const uint8_t *)image;
-    H5HG_local_heapset_t *heapset        = NULL;
-    H5HG_heap_t          *heap           = NULL;
-    uint32_t              encoded_nslots = 0;
-    size_t                nslots         = 0;
-    size_t                dir_size       = 0;
-    size_t                last_range_end = 0;
-    size_t                heap_offset    = 0;
-    size_t                heap_len       = 0;
+    const uint8_t        *p                 = (const uint8_t *)image;
+    H5HG_local_heapset_t *heapset           = NULL;
+    H5HG_heap_t          *heap              = NULL;
+    uint32_t              encoded_nslots    = 0;
+    size_t                nslots            = 0;
+    size_t                dir_size          = 0;
+    size_t                last_range_end    = 0;
+    size_t                heap_offset       = 0;
+    size_t                heap_len          = 0;
     size_t                member_alloc_size = 0;
     size_t                u;
     H5HG_local_heapset_t *ret_value = NULL;
@@ -3276,20 +3232,17 @@ H5HG__decode_local_heapset(H5F_t *f, const void *image, size_t len)
      * and should not be passed to this decoder.
      */
     if (len < H5HG_LOCAL_HEAPSET_SIZEOF_HDR)
-        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL,
-                    "chunk-local heap-set image is too small");
+        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL, "chunk-local heap-set image is too small");
 
     /* Validate the outer heap-set signature. */
     if (memcmp(p, H5HG_LOCAL_HEAPSET_MAGIC, (size_t)H5_SIZEOF_MAGIC) != 0)
-        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL,
-                    "bad chunk-local heap-set signature");
+        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL, "bad chunk-local heap-set signature");
 
     p += H5_SIZEOF_MAGIC;
 
     /* Validate the V1 heap-set format version. */
     if (*p++ != H5HG_LOCAL_HEAPSET_VERSION)
-        HGOTO_ERROR(H5E_HEAP, H5E_VERSION, NULL,
-                    "unsupported chunk-local heap-set version");
+        HGOTO_ERROR(H5E_HEAP, H5E_VERSION, NULL, "unsupported chunk-local heap-set version");
 
     /*
      * All reserved header bytes must be zero in V1.
@@ -3297,8 +3250,7 @@ H5HG__decode_local_heapset(H5F_t *f, const void *image, size_t len)
     for (u = 0; u < H5HG_LOCAL_HEAPSET_NRESERVED; u++) {
 
         if (p[u] != 0)
-            HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL,
-                        "invalid chunk-local heap-set reserved bytes");
+            HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL, "invalid chunk-local heap-set reserved bytes");
     }
 
     p += H5HG_LOCAL_HEAPSET_NRESERVED;
@@ -3308,22 +3260,18 @@ H5HG__decode_local_heapset(H5F_t *f, const void *image, size_t len)
     nslots = (size_t)encoded_nslots;
 
     if ((0 == nslots) || (nslots > H5HG_LOCAL_MAX_HEAP_SLOTS))
-        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL,
-                    "invalid chunk-local heap-set slot count");
+        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL, "invalid chunk-local heap-set slot count");
 
     /*
      * Validate the complete directory size before reading any entries.
      */
-    if (nslots > ((SIZE_MAX - H5HG_LOCAL_HEAPSET_SIZEOF_HDR) /
-                   H5HG_LOCAL_HEAPSET_SIZEOF_DIRENT(f)))
-        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, NULL,
-                    "chunk-local heap-set directory size overflow");
+    if (nslots > ((SIZE_MAX - H5HG_LOCAL_HEAPSET_SIZEOF_HDR) / H5HG_LOCAL_HEAPSET_SIZEOF_DIRENT(f)))
+        HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, NULL, "chunk-local heap-set directory size overflow");
 
     dir_size = nslots * H5HG_LOCAL_HEAPSET_SIZEOF_DIRENT(f);
 
     if (H5HG_LOCAL_HEAPSET_SIZEOF_HDR + dir_size > len)
-        HGOTO_ERROR(H5E_HEAP, H5E_OVERFLOW, NULL,
-                    "chunk-local heap-set directory extends beyond image");
+        HGOTO_ERROR(H5E_HEAP, H5E_OVERFLOW, NULL, "chunk-local heap-set directory extends beyond image");
 
     /*
      * Allocate exactly enough pointer capacity for the persistent stable-slot
@@ -3331,8 +3279,7 @@ H5HG__decode_local_heapset(H5F_t *f, const void *image, size_t len)
      * the outer manager and its trailing pointer array.
      */
     if (NULL == (heapset = H5HG__alloc_local_heapset(nslots)))
-        HGOTO_ERROR(H5E_HEAP, H5E_CANTALLOC, NULL,
-                    "unable to allocate chunk-local heap set");
+        HGOTO_ERROR(H5E_HEAP, H5E_CANTALLOC, NULL, "unable to allocate chunk-local heap set");
 
     heapset->nslots = nslots;
 
@@ -3354,23 +3301,20 @@ H5HG__decode_local_heapset(H5F_t *f, const void *image, size_t len)
 
         /* Exactly one zero field is never a valid active directory entry. */
         if ((0 == heap_offset) || (0 == heap_len))
-            HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL,
-                        "invalid chunk-local heap-set directory entry");
+            HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL, "invalid chunk-local heap-set directory entry");
 
         if (heap_offset < last_range_end)
             HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL,
                         "chunk-local member heap ranges overlap or are out of order");
 
         if ((heap_offset > len) || (heap_len > (len - heap_offset)))
-            HGOTO_ERROR(H5E_HEAP, H5E_OVERFLOW, NULL,
-                        "chunk-local member heap extends beyond image");
+            HGOTO_ERROR(H5E_HEAP, H5E_OVERFLOW, NULL, "chunk-local member heap extends beyond image");
 
         /*
          * Reconstruct this complete embedded H5HG collection.
          */
         if (NULL == (heap = H5HG__decode_local(f, (const uint8_t *)image + heap_offset, heap_len)))
-            HGOTO_ERROR(H5E_HEAP, H5E_CANTDECODE, NULL,
-                        "unable to decode chunk-local member heap");
+            HGOTO_ERROR(H5E_HEAP, H5E_CANTDECODE, NULL, "unable to decode chunk-local member heap");
 
         /*
          * Active stable slots must contain at least one live payload.
@@ -3386,12 +3330,10 @@ H5HG__decode_local_heapset(H5F_t *f, const void *image, size_t len)
          * transferring ownership to the heap set.
          */
         if (H5HG__local_heap_alloc_size(heap, &member_alloc_size) < 0)
-            HGOTO_ERROR(H5E_HEAP, H5E_CANTGET, NULL,
-                        "unable to calculate decoded member allocation");
+            HGOTO_ERROR(H5E_HEAP, H5E_CANTGET, NULL, "unable to calculate decoded member allocation");
 
         if ((member_alloc_size) > (SIZE_MAX - heapset->alloc_size))
-            HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, NULL,
-                        "decoded heap-set allocation size overflow");
+            HGOTO_ERROR(H5E_HEAP, H5E_BADRANGE, NULL, "decoded heap-set allocation size overflow");
 
         /*
          * Restore the member to its original stable slot and update the
@@ -3420,8 +3362,7 @@ H5HG__decode_local_heapset(H5F_t *f, const void *image, size_t len)
      * No trailing bytes are permitted after the final active member image.
      */
     if (last_range_end != len)
-        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL,
-                    "unexpected data in chunk-local heap-set image");
+        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, NULL, "unexpected data in chunk-local heap-set image");
 
     assert(heapset->nslots <= heapset->nalloc);
 
@@ -3432,11 +3373,10 @@ done:
     /*
      * HEAP has not yet been attached if it remains non-NULL here.
      */
-    if (heap) { 
+    if (heap) {
 
         if (H5HG__free_local(heap) < 0)
-            HDONE_ERROR(H5E_HEAP, H5E_CANTFREE, NULL,
-                        "unable to free partially decoded member heap");
+            HDONE_ERROR(H5E_HEAP, H5E_CANTFREE, NULL, "unable to free partially decoded member heap");
     }
 
     /*
