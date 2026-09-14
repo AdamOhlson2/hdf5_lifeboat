@@ -268,8 +268,6 @@ typedef struct H5CX_t {
     void *vol_wrap_ctx;                       /* VOL connector's "wrap context" for creating IDs */
     bool  vol_wrap_ctx_valid; /* Whether VOL connector's "wrap context" for creating IDs is valid */
 
-    /* Internal: Chunk-local Variable-length data context */
-    void *vlen_chunk_ctx;
 } H5CX_t;
 
 /* Typedef for nodes on the API context stack */

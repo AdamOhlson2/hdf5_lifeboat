@@ -91,6 +91,7 @@ H5_DLL herr_t H5HG__remove_local_heapset(H5F_t *f, H5HG_local_heapset_t *heapset
                                          uint16_t obj_idx);
 H5_DLL htri_t H5HG__is_empty_local_heapset(const H5HG_local_heapset_t *heapset);
 H5_DLL herr_t H5HG__free_local_heapset(H5HG_local_heapset_t *heapset);
+H5_DLL herr_t H5HG__get_local_heapset_alloc_size(const H5HG_local_heapset_t *heapset, size_t *size_out);
 
 /* Complete logical H5_SECTION_VL heap-set image encoding/decoding */
 H5_DLL herr_t H5HG__encode_local_heapset(H5F_t *f, const H5HG_local_heapset_t *heapset, uint8_t **image_out,
