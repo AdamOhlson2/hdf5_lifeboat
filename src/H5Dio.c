@@ -468,7 +468,8 @@ H5D__read(size_t count, H5D_dset_io_info_t *dset_info)
     /* Make shared chunk cache read call if appropriate */
     if (any_scc) {
         assert(H5F_SHARED_CACHE(dset_info[0].dset->oloc.file));
-        if (H5SC_read(H5F_SHARED_CACHE(dset_info[0].dset->oloc.file), count, dset_info) < 0)
+
+        if (H5SC_invoke_read(H5F_SHARED_CACHE(dset_info[0].dset->oloc.file), count, dset_info) < 0)
             HGOTO_ERROR(H5E_DATASET, H5E_READERROR, FAIL, "read through shared chunk cache failed");
     }
 
@@ -931,7 +932,7 @@ H5D__write(size_t count, H5D_dset_io_info_t *dset_info)
     if (any_scc) {
         assert(H5F_SHARED_CACHE(dset_info[0].dset->oloc.file));
 
-        if (H5SC_write(H5F_SHARED_CACHE(dset_info[0].dset->oloc.file), count, dset_info) < 0)
+        if (H5SC_invoke_write(H5F_SHARED_CACHE(dset_info[0].dset->oloc.file), count, dset_info) < 0)
             HGOTO_ERROR(H5E_DATASET, H5E_WRITEERROR, FAIL, "write through shared chunk cache failed");
     }
 

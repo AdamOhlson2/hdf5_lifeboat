@@ -1387,6 +1387,34 @@ H5D__create(H5F_t *file, hid_t type_id, const H5S_t *space, hid_t dcpl_id, hid_t
     /* Indicate that the layout information was initialized */
     layout_init = true;
 
+    /* If this dataset uses the structured chunk layout type, it must be added to necessary SCC structures. */
+    if (layout_init && (new_dset->shared->layout.type == H5D_STRUCT_CHUNK)) {
+        /* Convenience pointer for the shared chunk cache associated with the file this dataset belongs to. */
+        H5SC_t *cache = H5F_SHARED_CACHE(new_dset->oloc.file);
+
+        /* Look up this dataset in the SCC dataset hash table*/
+        H5SC_dset_header_t *dset_hdr = H5SC__ht_dset_find(cache, new_dset->oloc.addr);
+
+        /* Sanity check to ensure this dataset is only added to the SCC internal structures once. */
+        if (dset_hdr == NULL) {
+            /* Dataset not currently in SCC; components need to be created/added. */
+
+            size_t max_chunk_size = (size_t)new_dset->shared->layout.u.struct_chunk.size;
+
+            dset_hdr = H5SC_dset_create_header(cache, new_dset->oloc.addr, max_chunk_size);
+            if (H5SC__ht_dset_insert(cache, dset_hdr) < 0) {
+                HGOTO_ERROR(H5E_SCC, H5E_CANTINSERT, NULL, "dset insert into SCC hashtable failed");
+            }
+
+            if (H5SC__dset_lru_prepend(cache, dset_hdr) < 0) {
+                HGOTO_ERROR(H5E_SCC, H5E_DLL, NULL, "failed to insert into the SCC dataset DLL");
+            }
+        }
+        else {
+            HGOTO_ERROR(H5E_SCC, H5E_ALREADY_LINKED, NULL, "dataset already present in internal structures");
+        }
+    }
+
     /* Set up append flush parameters for the dataset */
     if (H5D__append_flush_setup(new_dset, new_dset->shared->dapl_id) < 0)
         HGOTO_ERROR(H5E_DATASET, H5E_CANTINIT, NULL, "unable to set up flush append property");
@@ -1800,6 +1828,40 @@ H5D__open_oid(H5D_t *dataset, hid_t dapl_id)
     /* Indicate that the layout information was initialized */
     layout_init = true;
 
+    if (layout_init && dataset->shared->layout.type == H5D_STRUCT_CHUNK) {
+        /* If this dataset uses the structured chunk layout type, it must be added to necessary SCC
+         * structures. */
+        if (layout_init && (dataset->shared->layout.type == H5D_STRUCT_CHUNK)) {
+            /* Convenience pointer for the shared chunk cache associated with the file this dataset
+             * belongs to. */
+            H5SC_t *cache = H5F_SHARED_CACHE(dataset->oloc.file);
+
+            /* Look up this dataset in the SCC dataset hash table*/
+            H5SC_dset_header_t *dset_hdr = H5SC__ht_dset_find(cache, dataset->oloc.addr);
+
+            /* Sanity check to ensure this dataset is only added to the SCC internal structures once.
+             */
+            if (dset_hdr == NULL) {
+                /* Dataset not currently in SCC; components need to be created/added. */
+
+                size_t max_chunk_size = (size_t)dataset->shared->layout.u.struct_chunk.size;
+
+                dset_hdr = H5SC_dset_create_header(cache, dataset->oloc.addr, max_chunk_size);
+                if (H5SC__ht_dset_insert(cache, dset_hdr) < 0) {
+                    HGOTO_ERROR(H5E_SCC, H5E_CANTINSERT, FAIL, "dset insert into SCC hashtable failed");
+                }
+
+                if (H5SC__dset_lru_prepend(cache, dset_hdr) < 0) {
+                    HGOTO_ERROR(H5E_SCC, H5E_DLL, FAIL, "failed to insert into the SCC dataset DLL");
+                }
+            }
+            else {
+                HGOTO_ERROR(H5E_SCC, H5E_ALREADY_LINKED, FAIL,
+                            "dataset already present in internal structures");
+            }
+        }
+    }
+
     /* Set up flush append property */
     if (H5D__append_flush_setup(dataset, dapl_id))
         HGOTO_ERROR(H5E_DATASET, H5E_CANTSET, FAIL, "unable to set up flush append property");
@@ -1840,7 +1902,15 @@ H5D__open_oid(H5D_t *dataset, hid_t dapl_id)
                     break;
 
                 case H5D_CHUNKED:
+                    fill_prop->alloc_time = H5D_ALLOC_TIME_INCR;
+                    break;
                 case H5D_STRUCT_CHUNK:
+                    /* Verify that the dataset is present in the SCC dataset hashtable. */
+                    if (NULL ==
+                        H5SC__ht_dset_find(H5F_SHARED_CACHE(dataset->oloc.file), dataset->oloc.addr)) {
+                        HGOTO_ERROR(H5E_SCC, H5E_HT_NOTFOUND, FAIL,
+                                    "dataset should have been added to the hash table upon creation.");
+                    }
                     fill_prop->alloc_time = H5D_ALLOC_TIME_INCR;
                     break;
 
@@ -2027,7 +2097,58 @@ H5D_close(H5D_t *dataset)
                 } /* end if */
                 break;
 
-            case H5D_STRUCT_CHUNK:
+            case H5D_STRUCT_CHUNK: {
+                /* Remove this dataset from the internal SCC components */
+                H5SC_t *cache = H5F_SHARED_CACHE(dataset->oloc.file);
+
+                H5SC_dset_header_t *dset_header;
+                dset_header = H5SC__ht_dset_find(cache, dataset->oloc.addr);
+                if (NULL != dset_header) {
+                    bool is_empty = true;
+
+                    /* Check that the dataset is empty; if not, flush and evict any remaining data. */
+                    if (H5SC_dset_is_empty(dset_header, &is_empty) < 0) {
+                        HGOTO_ERROR(H5E_SCC, H5E_CANNOTGET, FAIL, "failed to query dataset emptiness");
+                    }
+
+                    if (!is_empty) {
+                        /* Flush and evict chunks to avoid data loss */
+                        if (H5SC_flush_dset(cache, dataset, true) < 0) {
+                            /* Throw an appropriate error */
+                            HGOTO_ERROR(H5E_SCC, H5E_CANNOTFLUSH, FAIL, "failed to flush dset on close");
+                        }
+                    }
+
+                    /* Verify that the dataset is empty before removal and freeing of the structure */
+                    if (H5SC_dset_is_empty(dset_header, &is_empty) < 0) {
+                        HGOTO_ERROR(H5E_SCC, H5E_CANNOTGET, FAIL, "failed to query dataset emptiness");
+                    }
+
+                    /* Remove the dataset from the dataset DLL and dataset hash table */
+                    if (!is_empty) {
+                        /* Throw an error at this point if the dataset LRU wasn't properly freed */
+                        HGOTO_ERROR(H5E_SCC, H5E_CANNOTFLUSH, FAIL,
+                                    "dataset was not flushed properly prior to closing");
+                    }
+                    else {
+                        if (H5SC__dset_lru_remove(cache, dset_header) < 0) {
+                            HGOTO_ERROR(H5E_SCC, H5E_CANNOTREMOVE, FAIL,
+                                        "failed to remove dataset from SCC LRU list");
+                        }
+
+                        if (H5SC__ht_dset_delete(cache, H5SC_dset_get_addr(dset_header)) < 0) {
+                            HGOTO_ERROR(H5E_SCC, H5E_CANNOTREMOVE, FAIL,
+                                        "failed to remove dataset from SCC hash table");
+                        }
+
+                        if (H5SC_dset_destroy_header(cache, dataset, dset_header) < 0) {
+                            HGOTO_ERROR(H5E_SCC, H5E_CANNOTDESTROY, FAIL,
+                                        "failed to destroy SCC dataset header");
+                        }
+                        dset_header = NULL;
+                    }
+                }
+
                 /* Check for skip list for iterating over chunks during I/O to close */
                 if (dataset->shared->struct_chunk.sel_chunks) {
                     assert(H5SL_count(dataset->shared->struct_chunk.sel_chunks) == 0);
@@ -2047,8 +2168,9 @@ H5D_close(H5D_t *dataset)
                         H5FL_FREE(H5D_piece_info_t, dataset->shared->struct_chunk.single_piece_info);
                     dataset->shared->struct_chunk.single_piece_info = NULL;
                 } /* end if */
-                break;
 
+                break;
+            }
             case H5D_COMPACT:
                 /* Nothing special to do (info freed in the layout destroy) */
                 break;
@@ -2092,12 +2214,6 @@ H5D_close(H5D_t *dataset)
                 HGOTO_ERROR(H5E_IO, H5E_UNSUPPORTED, FAIL, "unsupported storage layout");
 #endif
         } /* end switch */
-
-        /* Evict the dataset's entries in the shared chunk cache */
-        if (dataset->shared->layout.sc_ops &&
-            H5SC_flush_dset(H5F_SHARED_CACHE(dataset->oloc.file), dataset, true) < 0)
-            HGOTO_ERROR(H5E_DATASET, H5E_CANTRELEASE, FAIL,
-                        "unable to evict dataset's entries in shared chunk cache");
 
         /* Destroy any cached layout information for the dataset */
         if (dataset->shared->layout.ops->dest && (dataset->shared->layout.ops->dest)(dataset) < 0)
@@ -2329,12 +2445,12 @@ done:
  */
 H5O_loc_t *
 H5D_oloc(H5D_t *dataset)
-{
-    /* Use FUNC_ENTER_NOAPI_NOINIT_NOERR here to avoid performance issues */
+{ /* Use FUNC_ENTER_NOAPI_NOINIT_NOERR here to avoid performance issues */
     FUNC_ENTER_NOAPI_NOINIT_NOERR
 
     FUNC_LEAVE_NOAPI(dataset ? &(dataset->oloc) : (H5O_loc_t *)NULL)
-} /* end H5D_oloc() */
+}
+/* end H5D_oloc() */
 
 /*-------------------------------------------------------------------------
  * Function: H5D_nameof

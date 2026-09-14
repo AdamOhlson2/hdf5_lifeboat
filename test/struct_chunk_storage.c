@@ -139,6 +139,7 @@ test_struct_chunk_info_1d(hid_t fcpl, hid_t fapl, bool filtered, bool early, uns
     char  filename[FILENAME_BUF_SIZE]; /* File name */
     hid_t fid  = H5I_INVALID_HID;
     hid_t sid  = H5I_INVALID_HID;
+    hid_t msid = H5I_INVALID_HID;
     hid_t dcpl = H5I_INVALID_HID;
     hid_t did  = H5I_INVALID_HID;
 
@@ -155,7 +156,9 @@ test_struct_chunk_info_1d(hid_t fcpl, hid_t fapl, bool filtered, bool early, uns
 
     H5D_chunk_index_t idx_type; /* dataset chunk index type */
 
-    int wbuf[30]; /* Write buffer */
+    int     wbuf[30]; /* Write buffer */
+    int     wvals[9];
+    hsize_t mdim[1];
 
     hsize_t start[1];
     hsize_t stride[1];
@@ -295,8 +298,31 @@ test_struct_chunk_info_1d(hid_t fcpl, hid_t fapl, bool filtered, bool early, uns
     wbuf[7]  = 7;
     wbuf[13] = 13;
 
-    if (H5Dwrite(did, H5T_NATIVE_INT, sid, sid, H5P_DEFAULT, wbuf) < 0)
+    /*
+     * Use a compact memory space for the sparse file selection.  This avoids
+     * relying on matching sparse selections in memory and file space while
+     * still writing the same selected file elements.
+     */
+    mdim[0] = 9;
+    if ((msid = H5Screate_simple(1, mdim, NULL)) < 0)
         TEST_ERROR;
+
+    wvals[0] = 1;
+    wvals[1] = 4;
+    wvals[2] = 5;
+    wvals[3] = 7;
+    wvals[4] = 10;
+    wvals[5] = 11;
+    wvals[6] = 13;
+    wvals[7] = 16;
+    wvals[8] = 17;
+
+    if (H5Dwrite(did, H5T_NATIVE_INT, msid, sid, H5P_DEFAULT, wvals) < 0)
+        TEST_ERROR;
+
+    if (H5Sclose(msid) < 0)
+        TEST_ERROR;
+    msid = H5I_INVALID_HID;
 
     if (H5Dclose(did) < 0)
         TEST_ERROR;
@@ -938,14 +964,8 @@ test_struct_chunk_extent_1d(hid_t fcpl, hid_t fapl, bool filtered, bool early)
     }
     H5E_END_TRY
 
-    if (early) {
-        if (status >= 0)
-            TEST_ERROR;
-    }
-    else {
-        if (status < 0)
-            TEST_ERROR;
-    }
+    if (status < 0)
+        TEST_ERROR;
 
     if ((new_sid = H5Dget_space(did)) < 0)
         TEST_ERROR;
@@ -957,7 +977,7 @@ test_struct_chunk_extent_1d(hid_t fcpl, hid_t fapl, bool filtered, bool early)
         stride[0] = 1;
         count[0]  = 3;
         block[0]  = 1;
-        H5Sselect_hyperslab(new_sid, H5S_SELECT_OR, start, stride, count, block);
+        H5Sselect_hyperslab(new_sid, H5S_SELECT_SET, start, stride, count, block);
 
         memset(wbuf1, 0, sizeof(wbuf1));
         wbuf1[20] = 20;
@@ -1015,14 +1035,8 @@ test_struct_chunk_extent_1d(hid_t fcpl, hid_t fapl, bool filtered, bool early)
     }
     H5E_END_TRY
 
-    if (early) {
-        if (status >= 0)
-            TEST_ERROR;
-    }
-    else {
-        if (status < 0)
-            TEST_ERROR;
-    }
+    if (status < 0)
+        TEST_ERROR;
 
     if ((new_sid = H5Dget_space(did)) < 0)
         TEST_ERROR;
@@ -1072,6 +1086,7 @@ test_struct_chunk_extent_1d(hid_t fcpl, hid_t fapl, bool filtered, bool early)
 
         /* Just read the selected chunk, otherwise H5SC_read didn't handle the case
            properly when reading in all chunks (which may or may not be allocated) */
+        count[0] = 3;
         if ((msid = H5Screate_simple(1, count, NULL)) < 0)
             TEST_ERROR;
         start[0]  = 20;
@@ -1166,7 +1181,10 @@ error:
  * Purpose:     Verify H5Dset_extent() for 2d dataset with v2-btree chunk index;
  *              there is a write before set_extent()
  *
- *              Expand or shrink for H5Dset_extent should fail for now
+ *              Expand and shrink are expected to succeed when structured
+ *              chunk extent transitions are supported by the selected file
+ *              format bounds. Older format bounds continue to reject
+ *              structured chunk dataset creation.
  *
  * Return:      Success:        0
  *              Failure:        -1
@@ -1340,7 +1358,7 @@ test_struct_chunk_extent_2d(hid_t fcpl, hid_t fapl, bool filtered, bool early, b
     }
     H5E_END_TRY
 
-    if (status >= 0)
+    if (status < 0)
         TEST_ERROR;
 
     if (H5Dclose(did) < 0)
@@ -2756,6 +2774,10 @@ filter_class3(unsigned int flags, size_t H5_ATTR_UNUSED cd_nelmts,
  *              --H5Pmodify_filter2()
  *              --H5Premove_filter2()
  *
+ *              Because structured chunks use SCC write-back caching, the
+ *              test explicitly flushes the dataset before verifying that
+ *              the registered filter processed encoded output.
+ *
  * Return:      # of errors
  *
  *-------------------------------------------------------------------------
@@ -2850,6 +2872,9 @@ test_struct_chunk_filter_register(hid_t fcpl, hid_t fapl)
     if (cd_values[0] != FILTER_PARAM_MOD)
         TEST_ERROR;
 
+    filter_bytes_written = 0;
+    filter_bytes_read    = 0;
+
     /* Starting at 3, select 1 block of size 3 */
     /* Selection is across 2 chunks */
     start[0]  = 3;
@@ -2870,14 +2895,32 @@ test_struct_chunk_filter_register(hid_t fcpl, hid_t fapl)
     if (H5Dwrite(did, H5T_NATIVE_INT, sid, sid, H5P_DEFAULT, wbuf) < 0)
         TEST_ERROR;
 
+    /*
+     * Structured chunks held by the SCC use write-back semantics. H5Dwrite()
+     * may therefore leave the modified chunks dirty and resident without
+     * immediately invoking the on-disk filter pipeline. Explicitly flush the
+     * dataset before checking that the registered filter processed encoded
+     * output.
+     */
+    if (H5Dflush(did) < 0)
+        TEST_ERROR;
+
     if (!filter_bytes_written)
         TEST_ERROR;
 
-    if (H5Fclose(fid) < 0)
+    if (H5Dclose(did) < 0)
         TEST_ERROR;
+    did = H5I_INVALID_HID;
 
     if (H5Pclose(dcpl) < 0)
         TEST_ERROR;
+    dcpl = H5I_INVALID_HID;
+
+    if (H5Fclose(fid) < 0)
+        TEST_ERROR;
+    fid = H5I_INVALID_HID;
+
+    filter_bytes_read = 0;
 
     if ((fid = H5Fopen(filename, H5F_ACC_RDWR, fapl)) < 0)
         TEST_ERROR;
@@ -3710,6 +3753,8 @@ error:
  *               --test/direct_chunk.c
  *               --test/chunk_info.c
  *
+ *
+ * *
  * Return:      EXIT_SUCCESS/EXIT_FAILURE
  *
  *-------------------------------------------------------------------------

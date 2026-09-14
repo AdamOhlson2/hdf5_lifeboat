@@ -8308,11 +8308,10 @@ H5D__get_struct_chunk_info(H5D_t *dset, const H5S_t H5_ATTR_UNUSED *space, hsize
     assert(dset->shared);
     assert(space);
 
-    /* Flush the dataset's cached chunks out to disk, to make certain the size is correct later */
-    /* It should be possible to optimize this in the future by only flushing the target chunk, and later
-     * directly looking up the target chunk instead of iterating, and potentially avoiding the flush and/or
-     * index query completely if the shared chunk cache has all the needed information needed. For now, just
-     * mirror the previous algorithm for legacy chunks. */
+    /*
+     * Flush dirty SCC chunks so persistent index information is current.
+     * Retain decoded chunks in SCC.
+     */
     if (H5SC_flush_dset(H5F_SHARED_CACHE(dset->oloc.file), dset, false) < 0)
         HGOTO_ERROR(H5E_DATASET, H5E_CANTFLUSH, FAIL, "cannot flush shared chunk cache for dataset");
 
@@ -8348,11 +8347,10 @@ H5D__get_struct_chunk_info_by_coord(H5D_t *dset, const hsize_t H5_ATTR_UNUSED *o
     assert(dset->shared);
     assert(offset);
 
-    /* Flush the dataset's cached chunks out to disk, to make certain the size is correct later */
-    /* It should be possible to optimize this in the future by only flushing the target chunk, and later
-     * directly looking up the target chunk instead of iterating, and potentially avoiding the flush and/or
-     * index query completely if the shared chunk cache has all the needed information needed. For now, just
-     * mirror the previous algorithm for legacy chunks. */
+    /*
+     * Flush dirty SCC chunks so persistent index information is current.
+     * Retain decoded chunks in SCC.
+     */
     if (H5SC_flush_dset(H5F_SHARED_CACHE(dset->oloc.file), dset, false) < 0)
         HGOTO_ERROR(H5E_DATASET, H5E_CANTFLUSH, FAIL, "cannot flush shared chunk cache for dataset");
 
@@ -8384,7 +8382,10 @@ H5D__struct_chunk_iter(H5D_t *dset, H5D_struct_chunk_iter_op_t H5_ATTR_UNUSED op
     assert(dset);
     assert(dset->shared);
 
-    /* Flush the dataset's cached chunks out to disk, to make certain the size is correct later */
+    /*
+     * Flush dirty SCC chunks so persistent index information is current.
+     * Retain decoded chunks in SCC.
+     */
     if (H5SC_flush_dset(H5F_SHARED_CACHE(dset->oloc.file), dset, false) < 0)
         HGOTO_ERROR(H5E_DATASET, H5E_CANTFLUSH, FAIL, "cannot flush shared chunk cache for dataset");
 
