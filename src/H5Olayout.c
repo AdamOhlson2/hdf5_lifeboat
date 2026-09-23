@@ -78,6 +78,22 @@ H5FL_DEFINE(H5O_layout_t);
  *
  * Return:      Success:        Pointer to new message in native order
  *              Failure:        NULL
+ * 
+ * Updated:     When decoding a single-chunk index for a three-section
+ *              structured chunk, use an eight-byte encoded chunk-size width.
+ *              The additional variable-length data section can make the
+ *              encoded chunk substantially larger than the fixed-size chunk
+ *              described by the layout, so this width cannot safely be
+ *              derived from the layout chunk size.
+ *
+ *              This reconstructs the same chunk-size representation selected
+ *              when the three-section single-chunk layout was encoded, allowing
+ *              the remaining persistent fields to be decoded at the correct
+ *              offsets. Structured chunks with fewer sections retain the
+ *              existing calculated width for compatibility with their current
+ *              layout-message representation.
+ * 
+ *                                                  --AZO   09/18/26
  *-------------------------------------------------------------------------
  */
 static void *
@@ -599,9 +615,18 @@ H5O__layout_decode(H5F_t *f, H5O_t H5_ATTR_UNUSED *open_oh, unsigned H5_ATTR_UNU
                     HGOTO_ERROR(H5E_OHDR, H5E_OVERFLOW, NULL, "ran off end of input buffer while decoding");
                 mesg->storage.u.struct_chunk.nsects = *p++;
 
+                /* Validate the number of structured-chunk sections before using it. */
+                if (0 == mesg->storage.u.struct_chunk.nsects || mesg->storage.u.struct_chunk.nsects > H5O_MAX_STC_NSECTS)
+                    HGOTO_ERROR(H5E_OHDR, H5E_BADVALUE, NULL, "invalid number of structured chunk sections");
+
                 if (H5_IS_BUFFER_OVERFLOW(p, 1, p_end))
                     HGOTO_ERROR(H5E_OHDR, H5E_OVERFLOW, NULL, "ran off end of input buffer while decoding");
                 mesg->storage.u.struct_chunk.nsects_md = *p++;
+
+                /* Metadata-section count cannot exceed the total section count. */
+                if ((mesg->storage.u.struct_chunk.nsects_md > mesg->storage.u.struct_chunk.nsects) ||
+                    (mesg->storage.u.struct_chunk.nsects_md > H5O_MAX_STC_NSECTS))
+                    HGOTO_ERROR(H5E_OHDR, H5E_BADVALUE, NULL, "invalid number of structured chunk metadata sections");
 
                 if (H5_IS_BUFFER_OVERFLOW(p, mesg->storage.u.struct_chunk.nsects_md, p_end))
                     HGOTO_ERROR(H5E_OHDR, H5E_OVERFLOW, NULL, "ran off end of input buffer while decoding");
@@ -635,11 +660,21 @@ H5O__layout_decode(H5F_t *f, H5O_t H5_ATTR_UNUSED *open_oh, unsigned H5_ATTR_UNU
                          * allowing for an extra byte, in case the structured chunk
                          * size (encoded selection + data) make the chunk larger.
                          */
-                        chunk_size_len = 1 + ((H5VM_log2_gen((uint64_t)mesg->u.struct_chunk.size) +
-                                               mesg->storage.u.struct_chunk.offset_size) /
-                                              mesg->storage.u.struct_chunk.offset_size);
-                        if (chunk_size_len > mesg->storage.u.struct_chunk.offset_size)
-                            chunk_size_len = mesg->storage.u.struct_chunk.offset_size;
+                        if (mesg->storage.u.struct_chunk.nsects == H5_SECTION_NUM) {
+                            chunk_size_len = 8;
+                        }
+                        else {
+                            chunk_size_len =
+                                1 + ((H5VM_log2_gen((uint64_t)mesg->u.struct_chunk.size) +
+                                    mesg->storage.u.struct_chunk.offset_size) /
+                                    mesg->storage.u.struct_chunk.offset_size);
+
+                            if (chunk_size_len > mesg->storage.u.struct_chunk.offset_size) {
+                                chunk_size_len = mesg->storage.u.struct_chunk.offset_size;
+                            }
+                        }
+
+                        mesg->storage.u.struct_chunk.u.single.chunk_size_len = chunk_size_len;
 
                         if (H5_IS_BUFFER_OVERFLOW(p, chunk_size_len, p_end))
                             HGOTO_ERROR(H5E_OHDR, H5E_OVERFLOW, NULL,

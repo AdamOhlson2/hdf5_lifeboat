@@ -139,6 +139,15 @@ H5_DLL htri_t             H5T_is_relocatable(const H5T_t *dt);
 H5_DLL herr_t             H5T_unregister(H5T_pers_t pers, const char *name, H5T_t *src, H5T_t *dst,
                                          H5VL_object_t *owned_vol_obj, H5T_conv_t func);
 H5_DLL herr_t             H5T_vlen_reclaim_elmt(void *elem, const H5T_t *dt);
+/*
+ * Recursively deletes the file-side VL payloads referenced by one element.
+ *
+ * DT must be a disk-located datatype whose VL nodes use the appropriate
+ * file-side callback class. For structured chunks, the datatype must first
+ * be privately copied and patched with H5T_patch_vlen_chunk_local(), and the
+ * corresponding H5T_vlen_chunk_ctx_t must be active.
+ */
+H5_DLL herr_t H5T_vlen_delete_file_elmt(void *elem, const H5T_t *dt);
 H5_DLL htri_t             H5T_set_loc(H5T_t *dt, H5VL_object_t *file, H5T_loc_t loc);
 H5_DLL htri_t             H5T_is_sensible(const H5T_t *dt);
 H5_DLL herr_t             H5T_set_version(H5F_t *f, H5T_t *dt);
