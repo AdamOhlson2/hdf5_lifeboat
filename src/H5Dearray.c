@@ -2125,7 +2125,7 @@ done:
  *
  *              Two-section structured chunks retain the existing calculated
  *              width to preserve their current record representation.
- * 
+ *
  *                                                  -- AZO    09/20/26
  *-------------------------------------------------------------------------
  */
@@ -2250,7 +2250,7 @@ done:
  *              Two-section structured chunks retain the existing calculated
  *              width so existing records continue to be opened using their
  *              original representation.
- * 
+ *
  *                                              -- AZO   09/20/26
  *-------------------------------------------------------------------------
  */
@@ -2283,8 +2283,7 @@ H5D__earray_stc_idx_open(const H5D_chk_idx_info_t *idx_info)
     }
     else {
         chunk_size_len =
-            1 + ((H5VM_log2_gen((uint64_t)idx_info->stc_layout->size) +
-                 idx_info->stc_storage->offset_size) /
+            1 + ((H5VM_log2_gen((uint64_t)idx_info->stc_layout->size) + idx_info->stc_storage->offset_size) /
                  idx_info->stc_storage->offset_size);
         if (chunk_size_len > idx_info->stc_storage->offset_size) {
             chunk_size_len = idx_info->stc_storage->offset_size;

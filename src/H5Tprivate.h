@@ -147,21 +147,21 @@ H5_DLL herr_t             H5T_vlen_reclaim_elmt(void *elem, const H5T_t *dt);
  * be privately copied and patched with H5T_patch_vlen_chunk_local(), and the
  * corresponding H5T_vlen_chunk_ctx_t must be active.
  */
-H5_DLL herr_t H5T_vlen_delete_file_elmt(void *elem, const H5T_t *dt);
-H5_DLL htri_t             H5T_set_loc(H5T_t *dt, H5VL_object_t *file, H5T_loc_t loc);
-H5_DLL htri_t             H5T_is_sensible(const H5T_t *dt);
-H5_DLL herr_t             H5T_set_version(H5F_t *f, H5T_t *dt);
-H5_DLL herr_t             H5T_patch_file(H5T_t *dt, H5F_t *f);
-H5_DLL herr_t             H5T_patch_vlen_file(H5T_t *dt, H5VL_object_t *file);
-H5_DLL herr_t             H5T_own_vol_obj(H5T_t *dt, H5VL_object_t *vol_obj);
-H5_DLL htri_t             H5T_is_variable_str(const H5T_t *dt);
-H5_DLL H5T_t             *H5T_construct_datatype(H5VL_object_t *dt_obj);
-H5_DLL H5VL_object_t     *H5T_get_named_type(const H5T_t *dt);
-H5_DLL H5T_t             *H5T_get_actual_type(H5T_t *dt);
-H5_DLL herr_t             H5T_save_refresh_state(hid_t tid, struct H5O_shared_t *cached_H5O_shared);
-H5_DLL herr_t             H5T_restore_refresh_state(hid_t tid, struct H5O_shared_t *cached_H5O_shared);
-H5_DLL bool               H5T_already_vol_managed(const H5T_t *dt);
-H5_DLL htri_t             H5T_is_vl_storage(const H5T_t *dt);
+H5_DLL herr_t         H5T_vlen_delete_file_elmt(void *elem, const H5T_t *dt);
+H5_DLL htri_t         H5T_set_loc(H5T_t *dt, H5VL_object_t *file, H5T_loc_t loc);
+H5_DLL htri_t         H5T_is_sensible(const H5T_t *dt);
+H5_DLL herr_t         H5T_set_version(H5F_t *f, H5T_t *dt);
+H5_DLL herr_t         H5T_patch_file(H5T_t *dt, H5F_t *f);
+H5_DLL herr_t         H5T_patch_vlen_file(H5T_t *dt, H5VL_object_t *file);
+H5_DLL herr_t         H5T_own_vol_obj(H5T_t *dt, H5VL_object_t *vol_obj);
+H5_DLL htri_t         H5T_is_variable_str(const H5T_t *dt);
+H5_DLL H5T_t         *H5T_construct_datatype(H5VL_object_t *dt_obj);
+H5_DLL H5VL_object_t *H5T_get_named_type(const H5T_t *dt);
+H5_DLL H5T_t         *H5T_get_actual_type(H5T_t *dt);
+H5_DLL herr_t         H5T_save_refresh_state(hid_t tid, struct H5O_shared_t *cached_H5O_shared);
+H5_DLL herr_t         H5T_restore_refresh_state(hid_t tid, struct H5O_shared_t *cached_H5O_shared);
+H5_DLL bool           H5T_already_vol_managed(const H5T_t *dt);
+H5_DLL htri_t         H5T_is_vl_storage(const H5T_t *dt);
 H5_DLL herr_t H5T_invoke_vol_optional(H5T_t *dt, H5VL_optional_args_t *args, hid_t dxpl_id, void **req,
                                       H5VL_object_t **vol_obj_ptr);
 H5_DLL bool   H5T_is_numeric_with_unusual_unused_bits(const H5T_t *dt);

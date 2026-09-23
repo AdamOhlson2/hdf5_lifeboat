@@ -121,12 +121,12 @@ static herr_t test_struct_chunk_vlen_two_members(hid_t fcpl, hid_t fapl, bool fi
 static herr_t test_struct_chunk_vlen_erase(hid_t fcpl, hid_t fapl, bool filtered);
 static herr_t test_struct_chunk_vlen_empty_section(hid_t fcpl, hid_t fapl, bool filtered);
 static herr_t test_struct_chunk_vlen_type_conversion(hid_t fcpl, hid_t fapl, bool filtered);
-static herr_t test_struct_chunk_vlen_stress(hid_t fcpl, hid_t fapl, unsigned chk_type, bool filtered, size_t iterations, uint64_t seed);
+static herr_t test_struct_chunk_vlen_stress(hid_t fcpl, hid_t fapl, unsigned chk_type, bool filtered,
+                                            size_t iterations, uint64_t seed);
 static herr_t test_local_heapset_stable_slots(hid_t fcpl, hid_t fapl);
 
-
-#define VL_STRESS_NELMTS  64
-#define VL_STRESS_MAX_LEN 257
+#define VL_STRESS_NELMTS             64
+#define VL_STRESS_MAX_LEN            257
 #define VL_STRESS_DEFAULT_ITERATIONS 96
 
 #define H5Z_FILTER_CLASS3 305
@@ -3027,41 +3027,41 @@ error:
  *
  * Note:        Read-side hvl_t pointers belong to HDF5 until H5Treclaim;
  *              write-side pointers refer to local test payload arrays.
- * 
- * 
+ *
+ *
  *                                               -- AZO   09/15/26
  *-------------------------------------------------------------------------
  */
 static herr_t
 test_struct_chunk_vlen(hid_t fcpl, hid_t fapl, unsigned chk_type, bool filtered)
 {
-    char              filename[FILENAME_BUF_SIZE];  /* Test file path */
-    hid_t             fid  = H5I_INVALID_HID;       /* File ID */
-    hid_t             sid  = H5I_INVALID_HID;       /* Dataset dataspace ID */
-    hid_t             dcpl = H5I_INVALID_HID;       /* Dataset creation property list ID */
-    hid_t             did  = H5I_INVALID_HID;       /* Dataset ID */
-    hid_t             tid  = H5I_INVALID_HID;       /* VL integer datatype ID */
-    H5D_chunk_index_t idx_type;                     /* Index type found on the dataset */
-    H5D_chunk_index_t expected_idx;                 /* Index type required by this case */
-    hsize_t           dims[2]       = {8, 4};       /* Dataset dimensions; adjusted for the index case */
-    hsize_t           maxdims[2]    = {8, 4};       /* Maximum dimensions; adjusted for the index case */
-    hsize_t           chunk_dims[2] = {4, 2};       /* Chunk dimensions; adjusted for the index case */
-    hvl_t             wbuf[8];                      /* VL values written to the dataset */
-    hvl_t             rbuf[8];                      /* VL values allocated by H5Dread() */
-    int               values[8][3];                 /* Integer payloads referenced by wbuf */
-    unsigned int      level = 6;                    /* Optional VL-section deflate level */
-    unsigned          rank;                         /* Rank selected for the index case */
-    unsigned          nelems;                       /* Number of dataset elements in this case */
-    unsigned          pass;                         /* Initial write or replacement pass */
-    unsigned          i;                            /* Dataset element index */
-    unsigned          j;                            /* Integer within a VL value */
-    bool              read_needs_reclaim = false;   /* Whether rbuf owns VL memory to reclaim */
+    char              filename[FILENAME_BUF_SIZE]; /* Test file path */
+    hid_t             fid  = H5I_INVALID_HID;      /* File ID */
+    hid_t             sid  = H5I_INVALID_HID;      /* Dataset dataspace ID */
+    hid_t             dcpl = H5I_INVALID_HID;      /* Dataset creation property list ID */
+    hid_t             did  = H5I_INVALID_HID;      /* Dataset ID */
+    hid_t             tid  = H5I_INVALID_HID;      /* VL integer datatype ID */
+    H5D_chunk_index_t idx_type;                    /* Index type found on the dataset */
+    H5D_chunk_index_t expected_idx;                /* Index type required by this case */
+    hsize_t           dims[2]       = {8, 4};      /* Dataset dimensions; adjusted for the index case */
+    hsize_t           maxdims[2]    = {8, 4};      /* Maximum dimensions; adjusted for the index case */
+    hsize_t           chunk_dims[2] = {4, 2};      /* Chunk dimensions; adjusted for the index case */
+    hvl_t             wbuf[8];                     /* VL values written to the dataset */
+    hvl_t             rbuf[8];                     /* VL values allocated by H5Dread() */
+    int               values[8][3];                /* Integer payloads referenced by wbuf */
+    unsigned int      level = 6;                   /* Optional VL-section deflate level */
+    unsigned          rank;                        /* Rank selected for the index case */
+    unsigned          nelems;                      /* Number of dataset elements in this case */
+    unsigned          pass;                        /* Initial write or replacement pass */
+    unsigned          i;                           /* Dataset element index */
+    unsigned          j;                           /* Integer within a VL value */
+    bool              read_needs_reclaim = false;  /* Whether rbuf owns VL memory to reclaim */
 
     /* Announce this case through the HDF5 test harness. */
     TESTING("structured chunk VL round trip");
 
     /* The same round-trip checks cover single chunk, fixed array,
-     * extensible array, and B-tree 2 indexes. 
+     * extensible array, and B-tree 2 indexes.
      */
     /* Select a shape and maximum extent that triggers the requested index. */
     switch (chk_type) {
@@ -3075,16 +3075,16 @@ test_struct_chunk_vlen(hid_t fcpl, hid_t fapl, unsigned chk_type, bool filtered)
             break;
 
         case CHK_FA:
-            rank          = 1;
-            nelems        = 8;
-            expected_idx  = H5D_CHUNK_IDX_FARRAY;
+            rank         = 1;
+            nelems       = 8;
+            expected_idx = H5D_CHUNK_IDX_FARRAY;
             break;
 
         case CHK_EA:
-            rank          = 1;
-            nelems        = 8;
-            maxdims[0]    = H5S_UNLIMITED;
-            expected_idx  = H5D_CHUNK_IDX_EARRAY;
+            rank         = 1;
+            nelems       = 8;
+            maxdims[0]   = H5S_UNLIMITED;
+            expected_idx = H5D_CHUNK_IDX_EARRAY;
             break;
 
         default: /* BT2: both dimensions unlimited */
@@ -3123,8 +3123,7 @@ test_struct_chunk_vlen(hid_t fcpl, hid_t fapl, unsigned chk_type, bool filtered)
     if (filtered) {
 
         /* Attach deflate to this named section only; OPTIONAL permits unfiltered output. */
-        if (H5Pset_filter2(dcpl, H5_SECTION_VL, H5Z_FILTER_DEFLATE,
-                           H5Z_FLAG_OPTIONAL, 1, &level) < 0)
+        if (H5Pset_filter2(dcpl, H5_SECTION_VL, H5Z_FILTER_DEFLATE, H5Z_FLAG_OPTIONAL, 1, &level) < 0)
             TEST_ERROR;
     }
 
@@ -3272,37 +3271,37 @@ error:
  *
  * Note:        Read-side hvl_t pointers belong to HDF5 until H5Treclaim;
  *              write-side pointers refer to local test payload arrays.
- * 
+ *
  *                                               -- AZO   09/15/26
  *-------------------------------------------------------------------------
  */
 static herr_t
 test_struct_chunk_vlen_partial(hid_t fcpl, hid_t fapl, bool filtered)
 {
-    char         filename[FILENAME_BUF_SIZE];  /* Test file path */
-    hid_t        fid      = H5I_INVALID_HID;   /* File ID */
-    hid_t        sid      = H5I_INVALID_HID;   /* Full dataset dataspace ID */
-    hid_t        file_sid = H5I_INVALID_HID;   /* Dataspace used to select dataset positions */
-    hid_t        mem_sid  = H5I_INVALID_HID;   /* Dataspace for the two-element write buffer */
-    hid_t        dcpl     = H5I_INVALID_HID;   /* Dataset creation property list ID */
-    hid_t        did      = H5I_INVALID_HID;   /* Dataset ID */
-    hid_t        tid      = H5I_INVALID_HID;   /* VL integer datatype ID */
-    hsize_t      dims[1]       = {8};          /* Eight dataset positions */
-    hsize_t      chunk_dims[1] = {4};          /* Four positions per chunk */
-    hsize_t      mem_dims[1]   = {2};          /* Two values supplied by a partial write */
-    hsize_t      start[1]      = {1};          /* First selected dataset position */
-    hsize_t      stride[1]     = {5};          /* Distance from position 1 to position 6 */
-    hsize_t      count[1]      = {2};          /* Number of selected positions */
-    hsize_t      block[1]      = {1};          /* One element at each selected position */
-    unsigned int level         = 6;            /* Optional VL-section deflate level */
-    int          first[3]      = {11, 12, 13}; /* Initial payload at position 1 */
-    int          second[2]     = {61, 62};     /* Initial payload at position 6 */
-    int          replacement   = 99;           /* Replacement payload at position 1 */
-    hvl_t        wbuf[2];                      /* Values supplied to a partial write */
-    hvl_t        rbuf[8];                      /* Values returned by the full read */
-    unsigned     pass;                         /* Initial or replacement verification pass */
-    unsigned     i;                            /* Dataset position being checked */
-    bool         reclaim_read = false;         /* Whether rbuf owns VL memory to reclaim */
+    char         filename[FILENAME_BUF_SIZE];     /* Test file path */
+    hid_t        fid           = H5I_INVALID_HID; /* File ID */
+    hid_t        sid           = H5I_INVALID_HID; /* Full dataset dataspace ID */
+    hid_t        file_sid      = H5I_INVALID_HID; /* Dataspace used to select dataset positions */
+    hid_t        mem_sid       = H5I_INVALID_HID; /* Dataspace for the two-element write buffer */
+    hid_t        dcpl          = H5I_INVALID_HID; /* Dataset creation property list ID */
+    hid_t        did           = H5I_INVALID_HID; /* Dataset ID */
+    hid_t        tid           = H5I_INVALID_HID; /* VL integer datatype ID */
+    hsize_t      dims[1]       = {8};             /* Eight dataset positions */
+    hsize_t      chunk_dims[1] = {4};             /* Four positions per chunk */
+    hsize_t      mem_dims[1]   = {2};             /* Two values supplied by a partial write */
+    hsize_t      start[1]      = {1};             /* First selected dataset position */
+    hsize_t      stride[1]     = {5};             /* Distance from position 1 to position 6 */
+    hsize_t      count[1]      = {2};             /* Number of selected positions */
+    hsize_t      block[1]      = {1};             /* One element at each selected position */
+    unsigned int level         = 6;               /* Optional VL-section deflate level */
+    int          first[3]      = {11, 12, 13};    /* Initial payload at position 1 */
+    int          second[2]     = {61, 62};        /* Initial payload at position 6 */
+    int          replacement   = 99;              /* Replacement payload at position 1 */
+    hvl_t        wbuf[2];                         /* Values supplied to a partial write */
+    hvl_t        rbuf[8];                         /* Values returned by the full read */
+    unsigned     pass;                            /* Initial or replacement verification pass */
+    unsigned     i;                               /* Dataset position being checked */
+    bool         reclaim_read = false;            /* Whether rbuf owns VL memory to reclaim */
 
     /* Announce this case through the HDF5 test harness. */
     TESTING("structured chunk sparse VL writes and replacement");
@@ -3338,22 +3337,19 @@ test_struct_chunk_vlen_partial(hid_t fcpl, hid_t fapl, bool filtered)
     if (filtered) {
 
         /* Attach deflate to this named section only; OPTIONAL permits unfiltered output. */
-        if (H5Pset_filter2(dcpl, H5_SECTION_VL, H5Z_FILTER_DEFLATE,
-                           H5Z_FLAG_OPTIONAL, 1, &level) < 0)
+        if (H5Pset_filter2(dcpl, H5_SECTION_VL, H5Z_FILTER_DEFLATE, H5Z_FLAG_OPTIONAL, 1, &level) < 0)
             TEST_ERROR;
     }
 
     /* Create the dataset using the configured type, extent, and chunk layout. */
-    if ((did = H5Dcreate2(fid, "partial_vlen", tid, sid, H5P_DEFAULT,
-                          dcpl, H5P_DEFAULT)) < 0)
+    if ((did = H5Dcreate2(fid, "partial_vlen", tid, sid, H5P_DEFAULT, dcpl, H5P_DEFAULT)) < 0)
         TEST_ERROR;
 
     /* Map the two-element memory buffer to dataset positions 1 and 6.
-     * The stride crosses the chunk boundary between positions 3 and 4. 
+     * The stride crosses the chunk boundary between positions 3 and 4.
      */
     /* Map the small memory buffer to the selected file position(s). */
-    if (H5Sselect_hyperslab(file_sid, H5S_SELECT_SET, start, stride,
-                            count, block) < 0)
+    if (H5Sselect_hyperslab(file_sid, H5S_SELECT_SET, start, stride, count, block) < 0)
         TEST_ERROR;
 
     /* Run each write/update state and verify it after closing the file. */
@@ -3418,8 +3414,7 @@ test_struct_chunk_vlen_partial(hid_t fcpl, hid_t fapl, bool filtered)
 
                 if (pass == 0) {
 
-                    if ((((int *)rbuf[i].p)[0] != 11) ||
-                        (((int *)rbuf[i].p)[1] != 12) ||
+                    if ((((int *)rbuf[i].p)[0] != 11) || (((int *)rbuf[i].p)[1] != 12) ||
                         (((int *)rbuf[i].p)[2] != 13))
                         TEST_ERROR;
                 }
@@ -3427,8 +3422,7 @@ test_struct_chunk_vlen_partial(hid_t fcpl, hid_t fapl, bool filtered)
                     TEST_ERROR;
             }
             else if (i == 6 && pass == 0) {
-                if ((rbuf[i].len != 2 || !rbuf[i].p) ||
-                    (((int *)rbuf[i].p)[0] != 61) ||
+                if ((rbuf[i].len != 2 || !rbuf[i].p) || (((int *)rbuf[i].p)[0] != 61) ||
                     (((int *)rbuf[i].p)[1] != 62))
                     TEST_ERROR;
             }
@@ -3466,7 +3460,7 @@ test_struct_chunk_vlen_partial(hid_t fcpl, hid_t fapl, bool filtered)
     if (H5Sclose(file_sid) < 0)
         TEST_ERROR;
     file_sid = H5I_INVALID_HID;
-    
+
     if (H5Sclose(sid) < 0)
         TEST_ERROR;
     sid = H5I_INVALID_HID;
@@ -3517,38 +3511,38 @@ error:
  *
  * Note:        Read-side hvl_t pointers belong to HDF5 until H5Treclaim;
  *              write-side pointers refer to local test payload arrays.
- * 
+ *
  *                                                -- AZO   09/15/26
  *-------------------------------------------------------------------------
  */
 static herr_t
 test_struct_chunk_vlen_churn(hid_t fcpl, hid_t fapl, bool filtered)
 {
-    char              filename[FILENAME_BUF_SIZE];  /* Test file path */
-    hid_t             fid      = H5I_INVALID_HID;   /* File ID */
-    hid_t             sid      = H5I_INVALID_HID;   /* Full dataset dataspace ID */
-    hid_t             file_sid = H5I_INVALID_HID;   /* Dataspace selecting the updated position */
-    hid_t             mem_sid  = H5I_INVALID_HID;   /* One-element update dataspace ID */
-    hid_t             dcpl     = H5I_INVALID_HID;   /* Dataset creation property list ID */
-    hid_t             did      = H5I_INVALID_HID;   /* Dataset ID */
-    hid_t             tid      = H5I_INVALID_HID;   /* VL integer datatype ID */
-    H5D_chunk_index_t idx_type;                     /* Index type found on the dataset */
-    hsize_t           dims[1]       = {8};          /* Eight dataset positions */
+    char              filename[FILENAME_BUF_SIZE];     /* Test file path */
+    hid_t             fid      = H5I_INVALID_HID;      /* File ID */
+    hid_t             sid      = H5I_INVALID_HID;      /* Full dataset dataspace ID */
+    hid_t             file_sid = H5I_INVALID_HID;      /* Dataspace selecting the updated position */
+    hid_t             mem_sid  = H5I_INVALID_HID;      /* One-element update dataspace ID */
+    hid_t             dcpl     = H5I_INVALID_HID;      /* Dataset creation property list ID */
+    hid_t             did      = H5I_INVALID_HID;      /* Dataset ID */
+    hid_t             tid      = H5I_INVALID_HID;      /* VL integer datatype ID */
+    H5D_chunk_index_t idx_type;                        /* Index type found on the dataset */
+    hsize_t           dims[1]       = {8};             /* Eight dataset positions */
     hsize_t           maxdims[1]    = {H5S_UNLIMITED}; /* Unlimited dimension for the index */
-    hsize_t           chunk_dims[1] = {4};          /* Two chunks of four positions */
-    hsize_t           one[1]        = {1};          /* Extent of the update selection */
-    hsize_t           start[1];                     /* Position selected for this update */
-    hvl_t             wbuf[8];                      /* Initial VL values */
-    hvl_t             update;                       /* Replacement for one position */
-    hvl_t             rbuf[8];                      /* Values read after reopening */
-    int               values[8][32];                /* Current expected payloads */
-    size_t            lengths[8];                   /* Current expected VL lengths */
-    unsigned int      level = 6;                    /* Optional VL-section deflate level */
-    unsigned          pass;                         /* Replacement iteration */
-    unsigned          i;                            /* Dataset position */
-    unsigned          j;                            /* Integer within a VL value */
-    unsigned          target;                       /* Position replaced on this iteration */
-    bool              reclaim_read = false;         /* Whether rbuf owns VL memory to reclaim */
+    hsize_t           chunk_dims[1] = {4};             /* Two chunks of four positions */
+    hsize_t           one[1]        = {1};             /* Extent of the update selection */
+    hsize_t           start[1];                        /* Position selected for this update */
+    hvl_t             wbuf[8];                         /* Initial VL values */
+    hvl_t             update;                          /* Replacement for one position */
+    hvl_t             rbuf[8];                         /* Values read after reopening */
+    int               values[8][32];                   /* Current expected payloads */
+    size_t            lengths[8];                      /* Current expected VL lengths */
+    unsigned int      level = 6;                       /* Optional VL-section deflate level */
+    unsigned          pass;                            /* Replacement iteration */
+    unsigned          i;                               /* Dataset position */
+    unsigned          j;                               /* Integer within a VL value */
+    unsigned          target;                          /* Position replaced on this iteration */
+    bool              reclaim_read = false;            /* Whether rbuf owns VL memory to reclaim */
 
     /* Announce this case through the HDF5 test harness. */
     TESTING("structured chunk repeated VL replacement");
@@ -3591,14 +3585,12 @@ test_struct_chunk_vlen_churn(hid_t fcpl, hid_t fapl, bool filtered)
     if (filtered) {
 
         /* Attach deflate to this named section only; OPTIONAL permits unfiltered output. */
-        if (H5Pset_filter2(dcpl, H5_SECTION_VL, H5Z_FILTER_DEFLATE,
-                           H5Z_FLAG_OPTIONAL, 1, &level) < 0)
+        if (H5Pset_filter2(dcpl, H5_SECTION_VL, H5Z_FILTER_DEFLATE, H5Z_FLAG_OPTIONAL, 1, &level) < 0)
             TEST_ERROR;
     }
 
     /* Create the dataset using the configured type, extent, and chunk layout. */
-    if ((did = H5Dcreate2(fid, "churn_vlen", tid, sid, H5P_DEFAULT,
-                          dcpl, H5P_DEFAULT)) < 0)
+    if ((did = H5Dcreate2(fid, "churn_vlen", tid, sid, H5P_DEFAULT, dcpl, H5P_DEFAULT)) < 0)
         TEST_ERROR;
 
     /* Ask the dataset which chunk-index implementation it actually chose. */
@@ -3627,7 +3619,7 @@ test_struct_chunk_vlen_churn(hid_t fcpl, hid_t fapl, bool filtered)
     for (pass = 0; pass < 24; pass++) {
 
         /* The target rotation reaches every position in both chunks. Alternating
-         * lengths exercises replacement by smaller and larger heap objects. 
+         * lengths exercises replacement by smaller and larger heap objects.
          */
         target          = (pass * 5) % 8;
         lengths[target] = (pass % 3 == 0) ? 1 : ((pass % 3 == 1) ? 32 : 7);
@@ -3641,8 +3633,7 @@ test_struct_chunk_vlen_churn(hid_t fcpl, hid_t fapl, bool filtered)
         start[0] = target;
 
         /* Map the small memory buffer to the selected file position(s). */
-        if (H5Sselect_hyperslab(file_sid, H5S_SELECT_SET, start,
-                                NULL, one, NULL) < 0)
+        if (H5Sselect_hyperslab(file_sid, H5S_SELECT_SET, start, NULL, one, NULL) < 0)
             TEST_ERROR;
 
         update.len = lengths[target];
@@ -3781,37 +3772,37 @@ error:
  *
  * Note:        Read-side hvl_t pointers belong to HDF5 until H5Treclaim;
  *              write-side pointers refer to local test payload arrays.
- * 
+ *
  *                                                -- AZO   09/15/26
  *-------------------------------------------------------------------------
  */
 static herr_t
 test_struct_chunk_vlen_large(hid_t fcpl, hid_t fapl, unsigned chk_type, bool filtered)
 {
-    char              filename[FILENAME_BUF_SIZE];  /* Test file path */
-    hid_t             fid  = H5I_INVALID_HID;       /* File ID */
-    hid_t             sid  = H5I_INVALID_HID;       /* Dataset dataspace ID */
-    hid_t             tid  = H5I_INVALID_HID;       /* VL integer datatype ID */
-    hid_t             dcpl = H5I_INVALID_HID;       /* Dataset creation property list ID */
-    hid_t             did  = H5I_INVALID_HID;       /* Dataset ID */
-    H5D_chunk_index_t idx_type;                     /* Index type found on the dataset */
-    H5D_chunk_index_t expected_idx;                 /* Index type required by this case */
-    hsize_t           dims[2]       = {8, 4};       /* Dataset dimensions for the index case */
-    hsize_t           maxdims[2]    = {8, 4};       /* Maximum dimensions for the index case */
-    hsize_t           chunk_dims[2] = {4, 2};       /* Chunk dimensions for the index case */
-    hvl_t             wbuf[8];                      /* Large and small values being written */
-    hvl_t             rbuf[8];                      /* Values allocated by H5Dread() */
-    int              *large = NULL;                 /* Dynamically allocated large payload */
-    int               small[8][2];                  /* Small payloads kept live beside it */
-    int               replacement = 987654;         /* Value used during replacement */
-    uint32_t          state = 0x12345678;           /* State for varied large-payload data */
-    unsigned int      level = 6;                    /* Optional VL-section deflate level */
-    unsigned          rank;                         /* Dataset rank for the index case */
-    unsigned          nelems;                       /* Number of elements in this case */
-    unsigned          pass;                         /* Write and verification pass */
-    unsigned          i;                            /* Dataset element index */
-    size_t            j;                            /* Integer within a VL payload */
-    bool              reclaim_read = false;         /* Whether rbuf owns VL memory to reclaim */
+    char              filename[FILENAME_BUF_SIZE]; /* Test file path */
+    hid_t             fid  = H5I_INVALID_HID;      /* File ID */
+    hid_t             sid  = H5I_INVALID_HID;      /* Dataset dataspace ID */
+    hid_t             tid  = H5I_INVALID_HID;      /* VL integer datatype ID */
+    hid_t             dcpl = H5I_INVALID_HID;      /* Dataset creation property list ID */
+    hid_t             did  = H5I_INVALID_HID;      /* Dataset ID */
+    H5D_chunk_index_t idx_type;                    /* Index type found on the dataset */
+    H5D_chunk_index_t expected_idx;                /* Index type required by this case */
+    hsize_t           dims[2]       = {8, 4};      /* Dataset dimensions for the index case */
+    hsize_t           maxdims[2]    = {8, 4};      /* Maximum dimensions for the index case */
+    hsize_t           chunk_dims[2] = {4, 2};      /* Chunk dimensions for the index case */
+    hvl_t             wbuf[8];                     /* Large and small values being written */
+    hvl_t             rbuf[8];                     /* Values allocated by H5Dread() */
+    int              *large = NULL;                /* Dynamically allocated large payload */
+    int               small[8][2];                 /* Small payloads kept live beside it */
+    int               replacement = 987654;        /* Value used during replacement */
+    uint32_t          state       = 0x12345678;    /* State for varied large-payload data */
+    unsigned int      level       = 6;             /* Optional VL-section deflate level */
+    unsigned          rank;                        /* Dataset rank for the index case */
+    unsigned          nelems;                      /* Number of elements in this case */
+    unsigned          pass;                        /* Write and verification pass */
+    unsigned          i;                           /* Dataset element index */
+    size_t            j;                           /* Integer within a VL payload */
+    bool              reclaim_read = false;        /* Whether rbuf owns VL memory to reclaim */
 
     /* Number of integers in the large VL payload. */
     const size_t large_nints = 131072;
@@ -3837,10 +3828,10 @@ test_struct_chunk_vlen_large(hid_t fcpl, hid_t fapl, unsigned chk_type, bool fil
             break;
 
         case CHK_EA:
-            rank          = 1;
-            nelems        = 8;
-            maxdims[0]    = H5S_UNLIMITED;
-            expected_idx  = H5D_CHUNK_IDX_EARRAY;
+            rank         = 1;
+            nelems       = 8;
+            maxdims[0]   = H5S_UNLIMITED;
+            expected_idx = H5D_CHUNK_IDX_EARRAY;
             break;
 
         default: /* BT2: both dimensions unlimited */
@@ -3861,7 +3852,7 @@ test_struct_chunk_vlen_large(hid_t fcpl, hid_t fapl, unsigned chk_type, bool fil
         TEST_ERROR;
 
     /* Produce varied bytes so the optional filter does not reduce this
-     * payload to a tiny image; this exercises large encoded chunk lengths. 
+     * payload to a tiny image; this exercises large encoded chunk lengths.
      */
     /* Process every scalar inside this variable-length payload. */
     for (j = 0; j < large_nints; j++) {
@@ -3896,7 +3887,7 @@ test_struct_chunk_vlen_large(hid_t fcpl, hid_t fapl, unsigned chk_type, bool fil
     /* Select the structured chunk layout. */
     if (H5Pset_layout(dcpl, H5D_STRUCT_CHUNK) < 0)
         TEST_ERROR;
-        
+
     /* Set the chunk shape and sparse storage policy. */
     if (H5Pset_struct_chunk(dcpl, rank, chunk_dims, H5D_SPARSE_CHUNK) < 0)
         TEST_ERROR;
@@ -3904,14 +3895,12 @@ test_struct_chunk_vlen_large(hid_t fcpl, hid_t fapl, unsigned chk_type, bool fil
     if (filtered) {
 
         /* Attach deflate to this named section only; OPTIONAL permits unfiltered output. */
-        if (H5Pset_filter2(dcpl, H5_SECTION_VL, H5Z_FILTER_DEFLATE,
-                           H5Z_FLAG_OPTIONAL, 1, &level) < 0)
+        if (H5Pset_filter2(dcpl, H5_SECTION_VL, H5Z_FILTER_DEFLATE, H5Z_FLAG_OPTIONAL, 1, &level) < 0)
             TEST_ERROR;
     }
 
     /* Create the dataset using the configured type, extent, and chunk layout. */
-    if ((did = H5Dcreate2(fid, "large_vlen", tid, sid, H5P_DEFAULT,
-                          dcpl, H5P_DEFAULT)) < 0)
+    if ((did = H5Dcreate2(fid, "large_vlen", tid, sid, H5P_DEFAULT, dcpl, H5P_DEFAULT)) < 0)
         TEST_ERROR;
 
     /* Ask the dataset which chunk-index implementation it actually chose. */
@@ -4094,7 +4083,7 @@ error:
  *
  * Note:        Read-side hvl_t pointers belong to HDF5 until H5Treclaim;
  *              write-side pointers refer to local test payload arrays.
- * 
+ *
  *                                                -- AZO   09/15/26
  *-------------------------------------------------------------------------
  */
@@ -4164,18 +4153,15 @@ test_struct_chunk_vlen_compound(hid_t fcpl, hid_t fapl, bool filtered)
         TEST_ERROR;
 
     /* Add a member at its real C-structure offset (HOFFSET handles padding). */
-    if (H5Tinsert(tid, "before",
-                  HOFFSET(compound_vl_record_t, before), H5T_NATIVE_INT) < 0)
+    if (H5Tinsert(tid, "before", HOFFSET(compound_vl_record_t, before), H5T_NATIVE_INT) < 0)
         TEST_ERROR;
 
     /* Add a member at its real C-structure offset (HOFFSET handles padding). */
-    if (H5Tinsert(tid, "values",
-                  HOFFSET(compound_vl_record_t, values), vl_tid) < 0)
+    if (H5Tinsert(tid, "values", HOFFSET(compound_vl_record_t, values), vl_tid) < 0)
         TEST_ERROR;
 
     /* Add a member at its real C-structure offset (HOFFSET handles padding). */
-    if (H5Tinsert(tid, "after",
-                  HOFFSET(compound_vl_record_t, after), H5T_NATIVE_INT) < 0)
+    if (H5Tinsert(tid, "after", HOFFSET(compound_vl_record_t, after), H5T_NATIVE_INT) < 0)
         TEST_ERROR;
 
     /* Start a dataset creation property list for layout and filters. */
@@ -4193,18 +4179,15 @@ test_struct_chunk_vlen_compound(hid_t fcpl, hid_t fapl, bool filtered)
     if (filtered) {
 
         /* Attach deflate to this named section only; OPTIONAL permits unfiltered output. */
-        if (H5Pset_filter2(dcpl, H5_SECTION_FIXED, H5Z_FILTER_DEFLATE,
-                           H5Z_FLAG_OPTIONAL, 1, &level) < 0)
+        if (H5Pset_filter2(dcpl, H5_SECTION_FIXED, H5Z_FILTER_DEFLATE, H5Z_FLAG_OPTIONAL, 1, &level) < 0)
             TEST_ERROR;
         /* Attach deflate to this named section only; OPTIONAL permits unfiltered output. */
-        if (H5Pset_filter2(dcpl, H5_SECTION_VL, H5Z_FILTER_DEFLATE,
-                           H5Z_FLAG_OPTIONAL, 1, &level) < 0)
+        if (H5Pset_filter2(dcpl, H5_SECTION_VL, H5Z_FILTER_DEFLATE, H5Z_FLAG_OPTIONAL, 1, &level) < 0)
             TEST_ERROR;
     }
 
     /* Create the dataset using the configured type, extent, and chunk layout. */
-    if ((did = H5Dcreate2(fid, "compound_vlen", tid, sid, H5P_DEFAULT,
-                          dcpl, H5P_DEFAULT)) < 0)
+    if ((did = H5Dcreate2(fid, "compound_vlen", tid, sid, H5P_DEFAULT, dcpl, H5P_DEFAULT)) < 0)
         TEST_ERROR;
 
     /* Ask the dataset which chunk-index implementation it actually chose. */
@@ -4247,13 +4230,11 @@ test_struct_chunk_vlen_compound(hid_t fcpl, hid_t fapl, bool filtered)
             update.after  = 402;
 
             /* Map the small memory buffer to the selected file position(s). */
-            if (H5Sselect_hyperslab(file_sid, H5S_SELECT_SET, start,
-                                    NULL, one, NULL) < 0)
+            if (H5Sselect_hyperslab(file_sid, H5S_SELECT_SET, start, NULL, one, NULL) < 0)
                 TEST_ERROR;
 
             /* Write the current state; HDF5 converts VL descriptors into chunk-local payloads. */
-            if (H5Dwrite(did, tid, mem_sid, file_sid,
-                         H5P_DEFAULT, &update) < 0)
+            if (H5Dwrite(did, tid, mem_sid, file_sid, H5P_DEFAULT, &update) < 0)
                 TEST_ERROR;
 
             wbuf[2] = update;
@@ -4288,15 +4269,13 @@ test_struct_chunk_vlen_compound(hid_t fcpl, hid_t fapl, bool filtered)
         reclaim_read = true;
 
         /* Decode the chunk and convert its VL values into newly allocated memory. */
-        if (H5Dread(did, tid, H5S_ALL, H5S_ALL,
-                    H5P_DEFAULT, rbuf) < 0)
+        if (H5Dread(did, tid, H5S_ALL, H5S_ALL, H5P_DEFAULT, rbuf) < 0)
             TEST_ERROR;
 
         /* Prepare or check each dataset element against its expected value. */
         for (i = 0; i < 4; i++) {
 
-            if ((rbuf[i].before != wbuf[i].before) ||
-                (rbuf[i].after != wbuf[i].after) ||
+            if ((rbuf[i].before != wbuf[i].before) || (rbuf[i].after != wbuf[i].after) ||
                 (rbuf[i].values.len != wbuf[i].values.len))
                 TEST_ERROR;
 
@@ -4399,7 +4378,7 @@ error:
  *
  * Note:        Read-side hvl_t pointers belong to HDF5 until H5Treclaim;
  *              write-side pointers refer to local test payload arrays.
- * 
+ *
  *                                                -- AZO   09/15/26
  *-------------------------------------------------------------------------
  */
@@ -4412,33 +4391,33 @@ test_struct_chunk_vlen_two_members(hid_t fcpl, hid_t fapl, bool filtered)
         hvl_t doubles;
     } two_vl_record_t;
 
-    char              filename[FILENAME_BUF_SIZE];  /* Test file path */
-    hid_t             fid        = H5I_INVALID_HID; /* File ID */
-    hid_t             sid        = H5I_INVALID_HID; /* Full dataset dataspace ID */
-    hid_t             file_sid   = H5I_INVALID_HID; /* Dataspace selecting the updated record */
-    hid_t             mem_sid    = H5I_INVALID_HID; /* One-record update dataspace ID */
-    hid_t             dcpl       = H5I_INVALID_HID; /* Dataset creation property list ID */
-    hid_t             did        = H5I_INVALID_HID; /* Dataset ID */
-    hid_t             int_vl_tid = H5I_INVALID_HID; /* VL integer member datatype ID */
-    hid_t             dbl_vl_tid = H5I_INVALID_HID; /* VL double member datatype ID */
-    hid_t             tid        = H5I_INVALID_HID; /* Compound record datatype ID */
-    H5D_chunk_index_t idx_type;                     /* Index type found on the dataset */
-    hsize_t           dims[1]       = {4};          /* Four compound records */
-    hsize_t           chunk_dims[1] = {4};          /* All records share one chunk */
-    hsize_t           one[1]        = {1};          /* Extent of the update selection */
-    hsize_t           start[1]      = {1};          /* Record selected for both updates */
-    unsigned int      level         = 6;            /* Optional section deflate level */
-    int               initial_ints[4][3];           /* Initial integer VL payloads */
-    double            initial_doubles[4][2];        /* Initial double VL payloads */
+    char              filename[FILENAME_BUF_SIZE];         /* Test file path */
+    hid_t             fid        = H5I_INVALID_HID;        /* File ID */
+    hid_t             sid        = H5I_INVALID_HID;        /* Full dataset dataspace ID */
+    hid_t             file_sid   = H5I_INVALID_HID;        /* Dataspace selecting the updated record */
+    hid_t             mem_sid    = H5I_INVALID_HID;        /* One-record update dataspace ID */
+    hid_t             dcpl       = H5I_INVALID_HID;        /* Dataset creation property list ID */
+    hid_t             did        = H5I_INVALID_HID;        /* Dataset ID */
+    hid_t             int_vl_tid = H5I_INVALID_HID;        /* VL integer member datatype ID */
+    hid_t             dbl_vl_tid = H5I_INVALID_HID;        /* VL double member datatype ID */
+    hid_t             tid        = H5I_INVALID_HID;        /* Compound record datatype ID */
+    H5D_chunk_index_t idx_type;                            /* Index type found on the dataset */
+    hsize_t           dims[1]       = {4};                 /* Four compound records */
+    hsize_t           chunk_dims[1] = {4};                 /* All records share one chunk */
+    hsize_t           one[1]        = {1};                 /* Extent of the update selection */
+    hsize_t           start[1]      = {1};                 /* Record selected for both updates */
+    unsigned int      level         = 6;                   /* Optional section deflate level */
+    int               initial_ints[4][3];                  /* Initial integer VL payloads */
+    double            initial_doubles[4][2];               /* Initial double VL payloads */
     double            new_doubles[3] = {71.5, 72.5, 73.5}; /* Replacement double payload */
-    int               new_ints[2]    = {81, 82};    /* Replacement integer payload */
-    two_vl_record_t   wbuf[4];                      /* Initial compound records */
-    two_vl_record_t   update;                       /* Replacement for record 1 */
-    two_vl_record_t   rbuf[4];                      /* Records read after each reopen */
-    unsigned          pass;                         /* Both-present and two replacement states */
-    unsigned          i;                            /* Record index */
-    size_t            j;                            /* Element within a VL member */
-    bool              reclaim_read = false;         /* Whether rbuf owns VL memory to reclaim */
+    int               new_ints[2]    = {81, 82};           /* Replacement integer payload */
+    two_vl_record_t   wbuf[4];                             /* Initial compound records */
+    two_vl_record_t   update;                              /* Replacement for record 1 */
+    two_vl_record_t   rbuf[4];                             /* Records read after each reopen */
+    unsigned          pass;                                /* Both-present and two replacement states */
+    unsigned          i;                                   /* Record index */
+    size_t            j;                                   /* Element within a VL member */
+    bool              reclaim_read = false;                /* Whether rbuf owns VL memory to reclaim */
 
     /* Announce this case through the HDF5 test harness. */
     TESTING("structured chunk with two VL members per compound element");
@@ -4475,18 +4454,15 @@ test_struct_chunk_vlen_two_members(hid_t fcpl, hid_t fapl, bool filtered)
         TEST_ERROR;
 
     /* Add a member at its real C-structure offset (HOFFSET handles padding). */
-    if (H5Tinsert(tid, "ints",
-                  HOFFSET(two_vl_record_t, ints), int_vl_tid) < 0)
+    if (H5Tinsert(tid, "ints", HOFFSET(two_vl_record_t, ints), int_vl_tid) < 0)
         TEST_ERROR;
 
     /* Add a member at its real C-structure offset (HOFFSET handles padding). */
-    if (H5Tinsert(tid, "tag",
-                  HOFFSET(two_vl_record_t, tag), H5T_NATIVE_INT) < 0)
+    if (H5Tinsert(tid, "tag", HOFFSET(two_vl_record_t, tag), H5T_NATIVE_INT) < 0)
         TEST_ERROR;
 
     /* Add a member at its real C-structure offset (HOFFSET handles padding). */
-    if (H5Tinsert(tid, "doubles",
-                  HOFFSET(two_vl_record_t, doubles), dbl_vl_tid) < 0)
+    if (H5Tinsert(tid, "doubles", HOFFSET(two_vl_record_t, doubles), dbl_vl_tid) < 0)
         TEST_ERROR;
 
     /* Start a dataset creation property list for layout and filters. */
@@ -4504,14 +4480,12 @@ test_struct_chunk_vlen_two_members(hid_t fcpl, hid_t fapl, bool filtered)
     if (filtered) {
 
         /* Attach deflate to this named section only; OPTIONAL permits unfiltered output. */
-        if (H5Pset_filter2(dcpl, H5_SECTION_VL, H5Z_FILTER_DEFLATE,
-                           H5Z_FLAG_OPTIONAL, 1, &level) < 0)
+        if (H5Pset_filter2(dcpl, H5_SECTION_VL, H5Z_FILTER_DEFLATE, H5Z_FLAG_OPTIONAL, 1, &level) < 0)
             TEST_ERROR;
     }
 
     /* Create the dataset using the configured type, extent, and chunk layout. */
-    if ((did = H5Dcreate2(fid, "two_vl_members", tid, sid,
-                          H5P_DEFAULT, dcpl, H5P_DEFAULT)) < 0)
+    if ((did = H5Dcreate2(fid, "two_vl_members", tid, sid, H5P_DEFAULT, dcpl, H5P_DEFAULT)) < 0)
         TEST_ERROR;
 
     /* Ask the dataset which chunk-index implementation it actually chose. */
@@ -4569,12 +4543,10 @@ test_struct_chunk_vlen_two_members(hid_t fcpl, hid_t fapl, bool filtered)
             }
 
             /* Map the small memory buffer to the selected file position(s). */
-            if (H5Sselect_hyperslab(file_sid, H5S_SELECT_SET, start,
-                                    NULL, one, NULL) < 0)
+            if (H5Sselect_hyperslab(file_sid, H5S_SELECT_SET, start, NULL, one, NULL) < 0)
                 TEST_ERROR;
             /* Write the current state; HDF5 converts VL descriptors into chunk-local payloads. */
-            if (H5Dwrite(did, tid, mem_sid, file_sid,
-                         H5P_DEFAULT, &update) < 0)
+            if (H5Dwrite(did, tid, mem_sid, file_sid, H5P_DEFAULT, &update) < 0)
                 TEST_ERROR;
 
             wbuf[1] = update;
@@ -4610,15 +4582,13 @@ test_struct_chunk_vlen_two_members(hid_t fcpl, hid_t fapl, bool filtered)
         reclaim_read = true;
 
         /* Decode the chunk and convert its VL values into newly allocated memory. */
-        if (H5Dread(did, tid, H5S_ALL, H5S_ALL,
-                    H5P_DEFAULT, rbuf) < 0)
+        if (H5Dread(did, tid, H5S_ALL, H5S_ALL, H5P_DEFAULT, rbuf) < 0)
             TEST_ERROR;
 
         /* Prepare or check each dataset element against its expected value. */
         for (i = 0; i < 4; i++) {
 
-            if (rbuf[i].tag != wbuf[i].tag ||
-                rbuf[i].ints.len != wbuf[i].ints.len ||
+            if (rbuf[i].tag != wbuf[i].tag || rbuf[i].ints.len != wbuf[i].ints.len ||
                 rbuf[i].doubles.len != wbuf[i].doubles.len)
                 TEST_ERROR;
 
@@ -4630,15 +4600,13 @@ test_struct_chunk_vlen_two_members(hid_t fcpl, hid_t fapl, bool filtered)
             /* Process every scalar inside this variable-length payload. */
             for (j = 0; j < wbuf[i].ints.len; j++) {
 
-                if (((int *)rbuf[i].ints.p)[j] !=
-                    ((int *)wbuf[i].ints.p)[j])
+                if (((int *)rbuf[i].ints.p)[j] != ((int *)wbuf[i].ints.p)[j])
                     TEST_ERROR;
             }
 
             /* Process every scalar inside this variable-length payload. */
             for (j = 0; j < wbuf[i].doubles.len; j++) {
-                if (((double *)rbuf[i].doubles.p)[j] !=
-                    ((double *)wbuf[i].doubles.p)[j])
+                if (((double *)rbuf[i].doubles.p)[j] != ((double *)wbuf[i].doubles.p)[j])
                     TEST_ERROR;
             }
         }
@@ -4735,39 +4703,39 @@ error:
  *
  * Note:        Read-side hvl_t pointers belong to HDF5 until H5Treclaim;
  *              write-side pointers refer to local test payload arrays.
- * 
+ *
  *                                                -- AZO   09/15/26
  *-------------------------------------------------------------------------
  */
 static herr_t
 test_struct_chunk_vlen_erase(hid_t fcpl, hid_t fapl, bool filtered)
 {
-    char         filename[FILENAME_BUF_SIZE];   /* Test file path */
-    hid_t        fid         = H5I_INVALID_HID; /* File ID */
-    hid_t        sid         = H5I_INVALID_HID; /* Full dataset dataspace ID */
+    char  filename[FILENAME_BUF_SIZE]; /* Test file path */
+    hid_t fid = H5I_INVALID_HID;       /* File ID */
+    hid_t sid = H5I_INVALID_HID;       /* Full dataset dataspace ID */
 
     /* Remove the selected defined values and their live VL objects. */
-    hid_t        erase_sid   = H5I_INVALID_HID; /* Selection passed to H5Derase() */
-    
+    hid_t erase_sid = H5I_INVALID_HID; /* Selection passed to H5Derase() */
+
     /* Fetch the defined-value selection without requiring a VL payload read. */
-    hid_t        defined_sid = H5I_INVALID_HID; /* Selection returned by H5Dget_defined() */
-    hid_t        mem_sid     = H5I_INVALID_HID; /* Memory dataspace for a surviving value */
-    hid_t        dcpl        = H5I_INVALID_HID; /* Dataset creation property list ID */
-    hid_t        did         = H5I_INVALID_HID; /* Dataset ID */
-    hid_t        tid         = H5I_INVALID_HID; /* VL integer datatype ID */
-    hsize_t      dims[1]       = {8};           /* Eight dataset positions */
+    hid_t        defined_sid   = H5I_INVALID_HID; /* Selection returned by H5Dget_defined() */
+    hid_t        mem_sid       = H5I_INVALID_HID; /* Memory dataspace for a surviving value */
+    hid_t        dcpl          = H5I_INVALID_HID; /* Dataset creation property list ID */
+    hid_t        did           = H5I_INVALID_HID; /* Dataset ID */
+    hid_t        tid           = H5I_INVALID_HID; /* VL integer datatype ID */
+    hsize_t      dims[1]       = {8};             /* Eight dataset positions */
     hsize_t      maxdims[1]    = {H5S_UNLIMITED}; /* Unlimited dataset dimension */
-    hsize_t      chunk_dims[1] = {4};           /* Four positions per chunk */
-    hsize_t      one[1]        = {1};           /* Extent for a single-value read */
-    hsize_t      start[1]      = {1};           /* First position to erase */
-    hsize_t      stride[1]     = {5};           /* Distance to the second erased position */
-    hsize_t      count[1]      = {2};           /* Number of positions in the erase selection */
-    int          values[8];                     /* Payload integers for the initial values */
-    hvl_t        wbuf[8];                       /* Initial VL values */
-    hvl_t        rvalue;                        /* One surviving value read for verification */
-    unsigned int level = 6;                     /* Optional section deflate level */
-    unsigned     i;                             /* Dataset position or selection index */
-    bool         reclaim_read = false;          /* Whether rvalue owns VL memory to reclaim */
+    hsize_t      chunk_dims[1] = {4};             /* Four positions per chunk */
+    hsize_t      one[1]        = {1};             /* Extent for a single-value read */
+    hsize_t      start[1]      = {1};             /* First position to erase */
+    hsize_t      stride[1]     = {5};             /* Distance to the second erased position */
+    hsize_t      count[1]      = {2};             /* Number of positions in the erase selection */
+    int          values[8];                       /* Payload integers for the initial values */
+    hvl_t        wbuf[8];                         /* Initial VL values */
+    hvl_t        rvalue;                          /* One surviving value read for verification */
+    unsigned int level = 6;                       /* Optional section deflate level */
+    unsigned     i;                               /* Dataset position or selection index */
+    bool         reclaim_read = false;            /* Whether rvalue owns VL memory to reclaim */
 
     /* Announce this case through the HDF5 test harness. */
     TESTING("structured chunk VL erase and defined-value reload");
@@ -4814,12 +4782,10 @@ test_struct_chunk_vlen_erase(hid_t fcpl, hid_t fapl, bool filtered)
          * needing to read the VL payload section.
          */
         /* Attach deflate to this named section only; OPTIONAL permits unfiltered output. */
-        if (H5Pset_filter2(dcpl, H5_SECTION_SELECTION, H5Z_FILTER_DEFLATE,
-                           H5Z_FLAG_OPTIONAL, 1, &level) < 0)
+        if (H5Pset_filter2(dcpl, H5_SECTION_SELECTION, H5Z_FILTER_DEFLATE, H5Z_FLAG_OPTIONAL, 1, &level) < 0)
             TEST_ERROR;
         /* Attach deflate to this named section only; OPTIONAL permits unfiltered output. */
-        if (H5Pset_filter2(dcpl, H5_SECTION_VL, H5Z_FILTER_DEFLATE,
-                           H5Z_FLAG_OPTIONAL, 1, &level) < 0)
+        if (H5Pset_filter2(dcpl, H5_SECTION_VL, H5Z_FILTER_DEFLATE, H5Z_FLAG_OPTIONAL, 1, &level) < 0)
             TEST_ERROR;
     }
 
@@ -4830,7 +4796,7 @@ test_struct_chunk_vlen_erase(hid_t fcpl, hid_t fapl, bool filtered)
     /* Start with one live VL payload at every position in two chunks. */
     /* Prepare or check each dataset element against its expected value. */
     for (i = 0; i < 8; i++) {
-        values[i]  = (int)(100 + i);
+        values[i]   = (int)(100 + i);
         wbuf[i].len = 1;
         wbuf[i].p   = &values[i];
     }
@@ -4841,8 +4807,7 @@ test_struct_chunk_vlen_erase(hid_t fcpl, hid_t fapl, bool filtered)
 
     /* Erase positions 1 and 6, leaving live VL objects in both chunks. */
     /* Map the small memory buffer to the selected file position(s). */
-    if (H5Sselect_hyperslab(erase_sid, H5S_SELECT_SET, start, stride,
-                            count, NULL) < 0)
+    if (H5Sselect_hyperslab(erase_sid, H5S_SELECT_SET, start, stride, count, NULL) < 0)
         TEST_ERROR;
     /* Remove the selected defined values and their live VL objects. */
     if (H5Derase(did, erase_sid, H5P_DEFAULT) < 0)
@@ -4893,8 +4858,7 @@ test_struct_chunk_vlen_erase(hid_t fcpl, hid_t fapl, bool filtered)
 
         start[0] = i == 0 ? 0 : 5;
         /* Map the small memory buffer to the selected file position(s). */
-        if (H5Sselect_hyperslab(erase_sid, H5S_SELECT_SET, start,
-                                NULL, one, NULL) < 0)
+        if (H5Sselect_hyperslab(erase_sid, H5S_SELECT_SET, start, NULL, one, NULL) < 0)
             TEST_ERROR;
 
         /* Start with empty read descriptors, including safe NULL payload pointers. */
@@ -4907,8 +4871,7 @@ test_struct_chunk_vlen_erase(hid_t fcpl, hid_t fapl, bool filtered)
         if (H5Dread(did, tid, mem_sid, erase_sid, H5P_DEFAULT, &rvalue) < 0)
             TEST_ERROR;
 
-        if (rvalue.len != 1 || !rvalue.p ||
-            ((int *)rvalue.p)[0] != values[start[0]])
+        if (rvalue.len != 1 || !rvalue.p || ((int *)rvalue.p)[0] != values[start[0]])
             TEST_ERROR;
 
         /* Release every payload H5Dread allocated in this memory dataspace. */
@@ -4959,7 +4922,7 @@ test_struct_chunk_vlen_erase(hid_t fcpl, hid_t fapl, bool filtered)
     /* Fetch the defined-value selection without requiring a VL payload read. */
     if ((defined_sid = H5Dget_defined(did, H5S_ALL, H5P_DEFAULT)) < 0)
         TEST_ERROR;
-        
+
     /* Verify the number of defined positions, independently of VL length. */
     if (H5Sget_select_npoints(defined_sid) != 0)
         TEST_ERROR;
@@ -5042,30 +5005,30 @@ error:
  *
  * Note:        Read-side hvl_t pointers belong to HDF5 until H5Treclaim;
  *              write-side pointers refer to local test payload arrays.
- * 
+ *
  *                                                -- AZO   09/17/26
  *-------------------------------------------------------------------------
  */
 static herr_t
 test_struct_chunk_vlen_empty_section(hid_t fcpl, hid_t fapl, bool filtered)
 {
-    char         filename[FILENAME_BUF_SIZE];   /* Test file path */
-    hid_t        fid         = H5I_INVALID_HID; /* File ID */
-    hid_t        sid         = H5I_INVALID_HID; /* Dataset dataspace ID */
+    char  filename[FILENAME_BUF_SIZE]; /* Test file path */
+    hid_t fid = H5I_INVALID_HID;       /* File ID */
+    hid_t sid = H5I_INVALID_HID;       /* Dataset dataspace ID */
     /* Fetch the defined-value selection without requiring a VL payload read. */
-    hid_t        defined_sid = H5I_INVALID_HID; /* Selection returned by H5Dget_defined() */
-    hid_t        dcpl        = H5I_INVALID_HID; /* Dataset creation property list ID */
-    hid_t        did         = H5I_INVALID_HID; /* Dataset ID */
-    hid_t        tid         = H5I_INVALID_HID; /* VL integer datatype ID */
-    hsize_t      dims[1]       = {4};           /* Four defined dataset positions */
-    hsize_t      chunk_dims[1] = {4};           /* All positions share one chunk */
-    hvl_t        wbuf[4];                       /* Values written for the current state */
-    hvl_t        rbuf[4];                       /* Values read after reopening */
-    int          payload[3] = {41, 42, 43};     /* Payload used in the nonempty state */
-    unsigned int level = 6;                     /* Optional VL-section deflate level */
-    unsigned     pass;                          /* Empty, nonempty, and empty-again states */
-    unsigned     i;                             /* Dataset position being checked */
-    bool         reclaim_read = false;          /* Whether rbuf owns VL memory to reclaim */
+    hid_t        defined_sid   = H5I_INVALID_HID; /* Selection returned by H5Dget_defined() */
+    hid_t        dcpl          = H5I_INVALID_HID; /* Dataset creation property list ID */
+    hid_t        did           = H5I_INVALID_HID; /* Dataset ID */
+    hid_t        tid           = H5I_INVALID_HID; /* VL integer datatype ID */
+    hsize_t      dims[1]       = {4};             /* Four defined dataset positions */
+    hsize_t      chunk_dims[1] = {4};             /* All positions share one chunk */
+    hvl_t        wbuf[4];                         /* Values written for the current state */
+    hvl_t        rbuf[4];                         /* Values read after reopening */
+    int          payload[3] = {41, 42, 43};       /* Payload used in the nonempty state */
+    unsigned int level      = 6;                  /* Optional VL-section deflate level */
+    unsigned     pass;                            /* Empty, nonempty, and empty-again states */
+    unsigned     i;                               /* Dataset position being checked */
+    bool         reclaim_read = false;            /* Whether rbuf owns VL memory to reclaim */
 
     /* Announce this case through the HDF5 test harness. */
     TESTING("structured chunk empty VL section transitions");
@@ -5100,14 +5063,12 @@ test_struct_chunk_vlen_empty_section(hid_t fcpl, hid_t fapl, bool filtered)
     if (filtered) {
 
         /* Attach deflate to this named section only; OPTIONAL permits unfiltered output. */
-        if (H5Pset_filter2(dcpl, H5_SECTION_VL, H5Z_FILTER_DEFLATE,
-                           H5Z_FLAG_OPTIONAL, 1, &level) < 0)
+        if (H5Pset_filter2(dcpl, H5_SECTION_VL, H5Z_FILTER_DEFLATE, H5Z_FLAG_OPTIONAL, 1, &level) < 0)
             TEST_ERROR;
     }
 
     /* Create the dataset using the configured type, extent, and chunk layout. */
-    if ((did = H5Dcreate2(fid, "empty_section_vlen", tid, sid,
-                          H5P_DEFAULT, dcpl, H5P_DEFAULT)) < 0)
+    if ((did = H5Dcreate2(fid, "empty_section_vlen", tid, sid, H5P_DEFAULT, dcpl, H5P_DEFAULT)) < 0)
         TEST_ERROR;
 
     /* Run each write/update state and verify it after closing the file. */
@@ -5178,10 +5139,8 @@ test_struct_chunk_vlen_empty_section(hid_t fcpl, hid_t fapl, bool filtered)
 
             if (pass == 1 && i == 2) {
 
-                if (rbuf[i].len != 3 || !rbuf[i].p ||
-                    ((int *)rbuf[i].p)[0] != payload[0] ||
-                    ((int *)rbuf[i].p)[1] != payload[1] ||
-                    ((int *)rbuf[i].p)[2] != payload[2])
+                if (rbuf[i].len != 3 || !rbuf[i].p || ((int *)rbuf[i].p)[0] != payload[0] ||
+                    ((int *)rbuf[i].p)[1] != payload[1] || ((int *)rbuf[i].p)[2] != payload[2])
                     TEST_ERROR;
             }
             else if (rbuf[i].len != 0)
@@ -5203,7 +5162,7 @@ test_struct_chunk_vlen_empty_section(hid_t fcpl, hid_t fapl, bool filtered)
 
     /* Mark the handle closed so error cleanup cannot close it twice. */
     did = H5I_INVALID_HID;
-    
+
     if (H5Pclose(dcpl) < 0)
         TEST_ERROR;
     dcpl = H5I_INVALID_HID;
@@ -5223,7 +5182,6 @@ test_struct_chunk_vlen_empty_section(hid_t fcpl, hid_t fapl, bool filtered)
     /* Report success only after all comparisons and normal cleanup succeed. */
     PASSED();
     return SUCCEED;
-
 
 error:
     /* Suppress secondary HDF5 errors while cleaning up partial setup. */
@@ -5262,46 +5220,44 @@ error:
  *
  * Note:        Read-side hvl_t pointers belong to HDF5 until H5Treclaim;
  *              write-side pointers refer to local test payload arrays.
- * 
+ *
  *                                                -- AZO   09/17/26
  *-------------------------------------------------------------------------
  */
 static herr_t
 test_struct_chunk_vlen_type_conversion(hid_t fcpl, hid_t fapl, bool filtered)
 {
-    char         filename[FILENAME_BUF_SIZE];  /* Test file path */
-    hid_t        fid      = H5I_INVALID_HID;   /* File ID */
-    hid_t        sid      = H5I_INVALID_HID;   /* Full dataset dataspace ID */
-    hid_t        file_sid = H5I_INVALID_HID;   /* Dataspace selecting the updated value */
-    hid_t        mem_sid  = H5I_INVALID_HID;   /* One-value update dataspace ID */
-    hid_t        dcpl     = H5I_INVALID_HID;   /* Dataset creation property list ID */
-    hid_t        did      = H5I_INVALID_HID;   /* Dataset ID */
-    hid_t        file_tid = H5I_INVALID_HID;   /* VL datatype with file-format integer base */
-    hid_t        short_tid = H5I_INVALID_HID;  /* VL datatype with native short base */
-    hid_t        int_tid  = H5I_INVALID_HID;   /* VL datatype with native int base */
-    hsize_t      dims[1]       = {4};          /* Four dataset positions */
-    hsize_t      chunk_dims[1] = {4};          /* All values share one chunk */
-    hsize_t      one[1]        = {1};          /* Extent of the replacement selection */
-    hsize_t      start[1]      = {1};          /* Position replaced using native ints */
-    short        a[2] = {11, 12};              /* Initial payload for position 0 */
-    short        b[3] = {21, 22, 23};          /* Initial payload for position 1 */
-    short        c[1] = {31};                  /* Initial payload for position 2 */
-    short        d[2] = {41, 42};              /* Initial payload for position 3 */
-    int          replacement[4] = {51, 52, 53, 54}; /* Replacement for position 1 */
-    const int    expected[4][4] = {
-        {11, 12, 0, 0},
-        {51, 52, 53, 54},
-        {31, 0, 0, 0},
-        {41, 42, 0, 0}
-    };                                        /* Expected integer values after conversion */
-    const size_t expected_len[4] = {2, 4, 1, 2}; /* Expected VL lengths */
-    hvl_t        wbuf[4];                     /* Initial VL values backed by short arrays */
-    hvl_t        update;                      /* Replacement VL value backed by ints */
-    hvl_t        rbuf[4];                     /* Converted values returned by H5Dread() */
-    unsigned int level = 6;                   /* Optional VL-section deflate level */
-    unsigned     i;                           /* Dataset position */
-    size_t       j;                           /* Integer within a VL value */
-    bool         reclaim_read = false;        /* Whether rbuf owns VL memory to reclaim */
+    char         filename[FILENAME_BUF_SIZE];        /* Test file path */
+    hid_t        fid             = H5I_INVALID_HID;  /* File ID */
+    hid_t        sid             = H5I_INVALID_HID;  /* Full dataset dataspace ID */
+    hid_t        file_sid        = H5I_INVALID_HID;  /* Dataspace selecting the updated value */
+    hid_t        mem_sid         = H5I_INVALID_HID;  /* One-value update dataspace ID */
+    hid_t        dcpl            = H5I_INVALID_HID;  /* Dataset creation property list ID */
+    hid_t        did             = H5I_INVALID_HID;  /* Dataset ID */
+    hid_t        file_tid        = H5I_INVALID_HID;  /* VL datatype with file-format integer base */
+    hid_t        short_tid       = H5I_INVALID_HID;  /* VL datatype with native short base */
+    hid_t        int_tid         = H5I_INVALID_HID;  /* VL datatype with native int base */
+    hsize_t      dims[1]         = {4};              /* Four dataset positions */
+    hsize_t      chunk_dims[1]   = {4};              /* All values share one chunk */
+    hsize_t      one[1]          = {1};              /* Extent of the replacement selection */
+    hsize_t      start[1]        = {1};              /* Position replaced using native ints */
+    short        a[2]            = {11, 12};         /* Initial payload for position 0 */
+    short        b[3]            = {21, 22, 23};     /* Initial payload for position 1 */
+    short        c[1]            = {31};             /* Initial payload for position 2 */
+    short        d[2]            = {41, 42};         /* Initial payload for position 3 */
+    int          replacement[4]  = {51, 52, 53, 54}; /* Replacement for position 1 */
+    const int    expected[4][4]  = {{11, 12, 0, 0},
+                                    {51, 52, 53, 54},
+                                    {31, 0, 0, 0},
+                                    {41, 42, 0, 0}}; /* Expected integer values after conversion */
+    const size_t expected_len[4] = {2, 4, 1, 2};     /* Expected VL lengths */
+    hvl_t        wbuf[4];                            /* Initial VL values backed by short arrays */
+    hvl_t        update;                             /* Replacement VL value backed by ints */
+    hvl_t        rbuf[4];                            /* Converted values returned by H5Dread() */
+    unsigned int level = 6;                          /* Optional VL-section deflate level */
+    unsigned     i;                                  /* Dataset position */
+    size_t       j;                                  /* Integer within a VL value */
+    bool         reclaim_read = false;               /* Whether rbuf owns VL memory to reclaim */
 
     /* Announce this case through the HDF5 test harness. */
     TESTING("structured chunk VL base-type conversion and heap reload");
@@ -5328,7 +5284,7 @@ test_struct_chunk_vlen_type_conversion(hid_t fcpl, hid_t fapl, bool filtered)
     /* Build a variable-length datatype with the requested base type. */
     if ((file_tid = H5Tvlen_create(H5T_STD_I32LE)) < 0)
         TEST_ERROR;
-        
+
     /* Build a variable-length datatype with the requested base type. */
     if ((short_tid = H5Tvlen_create(H5T_NATIVE_SHORT)) < 0)
         TEST_ERROR;
@@ -5352,25 +5308,26 @@ test_struct_chunk_vlen_type_conversion(hid_t fcpl, hid_t fapl, bool filtered)
     if (filtered) {
 
         /* Attach deflate to this named section only; OPTIONAL permits unfiltered output. */
-        if (H5Pset_filter2(dcpl, H5_SECTION_VL, H5Z_FILTER_DEFLATE,
-                           H5Z_FLAG_OPTIONAL, 1, &level) < 0)
+        if (H5Pset_filter2(dcpl, H5_SECTION_VL, H5Z_FILTER_DEFLATE, H5Z_FLAG_OPTIONAL, 1, &level) < 0)
             TEST_ERROR;
     }
 
     /* Create the dataset using the configured type, extent, and chunk layout. */
-    if ((did = H5Dcreate2(fid, "vlen_type_conversion", file_tid, sid,
-                          H5P_DEFAULT, dcpl, H5P_DEFAULT)) < 0)
+    if ((did = H5Dcreate2(fid, "vlen_type_conversion", file_tid, sid, H5P_DEFAULT, dcpl, H5P_DEFAULT)) < 0)
         TEST_ERROR;
 
     /* Force short -> file int conversion for four distinct VL payloads. */
-    wbuf[0].len = 2; wbuf[0].p = a;
-    wbuf[1].len = 3; wbuf[1].p = b;
-    wbuf[2].len = 1; wbuf[2].p = c;
-    wbuf[3].len = 2; wbuf[3].p = d;
+    wbuf[0].len = 2;
+    wbuf[0].p   = a;
+    wbuf[1].len = 3;
+    wbuf[1].p   = b;
+    wbuf[2].len = 1;
+    wbuf[2].p   = c;
+    wbuf[3].len = 2;
+    wbuf[3].p   = d;
 
     /* Write the current state; HDF5 converts VL descriptors into chunk-local payloads. */
-    if (H5Dwrite(did, short_tid, H5S_ALL, H5S_ALL,
-                 H5P_DEFAULT, wbuf) < 0)
+    if (H5Dwrite(did, short_tid, H5S_ALL, H5S_ALL, H5P_DEFAULT, wbuf) < 0)
         TEST_ERROR;
 
     /*
@@ -5378,16 +5335,14 @@ test_struct_chunk_vlen_type_conversion(hid_t fcpl, hid_t fapl, bool filtered)
      * removed without disturbing the other three descriptors or payloads.
      */
     /* Map the small memory buffer to the selected file position(s). */
-    if (H5Sselect_hyperslab(file_sid, H5S_SELECT_SET, start,
-                            NULL, one, NULL) < 0)
+    if (H5Sselect_hyperslab(file_sid, H5S_SELECT_SET, start, NULL, one, NULL) < 0)
         TEST_ERROR;
 
     update.len = 4;
     update.p   = replacement;
 
     /* Write the current state; HDF5 converts VL descriptors into chunk-local payloads. */
-    if (H5Dwrite(did, int_tid, mem_sid, file_sid,
-                 H5P_DEFAULT, &update) < 0)
+    if (H5Dwrite(did, int_tid, mem_sid, file_sid, H5P_DEFAULT, &update) < 0)
         TEST_ERROR;
 
     /* Close the dataset to release its cached decoded chunks and persist changes. */
@@ -5420,8 +5375,7 @@ test_struct_chunk_vlen_type_conversion(hid_t fcpl, hid_t fapl, bool filtered)
     reclaim_read = true;
 
     /* Decode the chunk and convert its VL values into newly allocated memory. */
-    if (H5Dread(did, int_tid, H5S_ALL, H5S_ALL,
-                H5P_DEFAULT, rbuf) < 0)
+    if (H5Dread(did, int_tid, H5S_ALL, H5S_ALL, H5P_DEFAULT, rbuf) < 0)
         TEST_ERROR;
 
     /* Prepare or check each dataset element against its expected value. */
@@ -5529,29 +5483,29 @@ error:
  *
  * Note:        Read-side hvl_t pointers belong to HDF5 until H5Treclaim;
  *              write-side pointers refer to local test payload arrays.
- * 
+ *
  *                                                -- AZO   09/17/26
  *-------------------------------------------------------------------------
  */
 static herr_t
 test_local_heapset_stable_slots(hid_t fcpl, hid_t fapl)
 {
-    char                   filename[FILENAME_BUF_SIZE]; /* Test file path */
-    hid_t                  fid       = H5I_INVALID_HID; /* File ID */
-    H5VL_object_t         *vol_obj   = NULL;            /* VOL wrapper for the file ID */
-    H5F_t                 *f         = NULL;            /* Internal file object for H5HG calls */
-    H5HG_local_heapset_t  *heapset   = NULL;            /* Original local heap set */
-    H5HG_local_heapset_t  *decoded   = NULL;            /* Heap set reconstructed from image */
-    uint8_t               *payload   = NULL;            /* Bytes inserted into member heaps */
-    uint8_t               *readback  = NULL;            /* Buffer for checking stored objects */
-    uint8_t               *image     = NULL;            /* Encoded heap-set image */
-    size_t                 image_len = 0;               /* Length of encoded image */
-    size_t                 size      = H5HG_LOCAL_NORMAL_HEAP_SIZE; /* Payload size */
-    size_t                 bytes     = 0;               /* Size reported by getter or read */
-    size_t                 expected  = 0;               /* Allocation total recomputed by test */
-    uint16_t               slot[3]   = {0, 0, 0};       /* Stable heap slot for each object */
-    uint16_t               index[3]  = {0, 0, 0};       /* Object index within each member heap */
-    unsigned               i;                           /* Object or member-heap index */
+    char                  filename[FILENAME_BUF_SIZE];             /* Test file path */
+    hid_t                 fid       = H5I_INVALID_HID;             /* File ID */
+    H5VL_object_t        *vol_obj   = NULL;                        /* VOL wrapper for the file ID */
+    H5F_t                *f         = NULL;                        /* Internal file object for H5HG calls */
+    H5HG_local_heapset_t *heapset   = NULL;                        /* Original local heap set */
+    H5HG_local_heapset_t *decoded   = NULL;                        /* Heap set reconstructed from image */
+    uint8_t              *payload   = NULL;                        /* Bytes inserted into member heaps */
+    uint8_t              *readback  = NULL;                        /* Buffer for checking stored objects */
+    uint8_t              *image     = NULL;                        /* Encoded heap-set image */
+    size_t                image_len = 0;                           /* Length of encoded image */
+    size_t                size      = H5HG_LOCAL_NORMAL_HEAP_SIZE; /* Payload size */
+    size_t                bytes     = 0;                           /* Size reported by getter or read */
+    size_t                expected  = 0;                           /* Allocation total recomputed by test */
+    uint16_t              slot[3]   = {0, 0, 0};                   /* Stable heap slot for each object */
+    uint16_t              index[3]  = {0, 0, 0};                   /* Object index within each member heap */
+    unsigned              i;                                       /* Object or member-heap index */
 
     /* Announce this case through the HDF5 test harness. */
     TESTING("chunk-local VL heap-set stable slots and allocation accounting");
@@ -5688,23 +5642,23 @@ test_local_heapset_stable_slots(hid_t fcpl, hid_t fapl)
     bytes = size;
 
     /* Resolve the stored slot/index pair and read the surviving payload. */
-    if (H5HG__read_local_heapset(f, decoded, slot[2], index[2], readback, &bytes) < 0 ||
-        bytes != size || readback[0] != 'C')
+    if (H5HG__read_local_heapset(f, decoded, slot[2], index[2], readback, &bytes) < 0 || bytes != size ||
+        readback[0] != 'C')
         TEST_ERROR;
 
     /* Release the heap set and its owned member allocations. */
     if (H5HG__free_local_heapset(decoded) < 0)
         TEST_ERROR;
-        
+
     decoded = NULL;
 
     /* Release the heap set and its owned member allocations. */
     if (H5HG__free_local_heapset(heapset) < 0)
         TEST_ERROR;
 
-    heapset = NULL;
-    image = H5MM_xfree(image);
-    payload = H5MM_xfree(payload);
+    heapset  = NULL;
+    image    = H5MM_xfree(image);
+    payload  = H5MM_xfree(payload);
     readback = H5MM_xfree(readback);
 
     /* Close the file; an active pass reopens it to check stored data. */
@@ -5763,7 +5717,7 @@ typedef struct vl_edge_record_t {
  * remaining allocations without traversing a partially converted record.
  */
 typedef struct vl_edge_alloc_t {
-    void                    *ptr;
+    void                   *ptr;
     struct vl_edge_alloc_t *next;
 } vl_edge_alloc_t;
 
@@ -5866,8 +5820,7 @@ vl_edge_equal_ints(const hvl_t *actual, const hvl_t *expected)
         return false;
 
     for (i = 0; i < expected->len; i++)
-        if (((const int *)actual->p)[i] !=
-            ((const int *)expected->p)[i])
+        if (((const int *)actual->p)[i] != ((const int *)expected->p)[i])
             return false;
 
     return true;
@@ -5897,10 +5850,8 @@ vl_edge_equal_ints(const hvl_t *actual, const hvl_t *expected)
  *-------------------------------------------------------------------------
  */
 static herr_t
-verify_struct_chunk_vlen_edges(hid_t did, hid_t tid, hid_t sid,
-                               const vl_edge_record_t expected[8],
-                               const bool defined[8],
-                               unsigned phase, unsigned reopened)
+verify_struct_chunk_vlen_edges(hid_t did, hid_t tid, hid_t sid, const vl_edge_record_t expected[8],
+                               const bool defined[8], unsigned phase, unsigned reopened)
 {
     vl_edge_record_t actual[8];
     vl_edge_record_t zero_record;
@@ -5909,7 +5860,7 @@ verify_struct_chunk_vlen_edges(hid_t did, hid_t tid, hid_t sid,
     hid_t            defined_sid = H5I_INVALID_HID;
     hsize_t          coord[1];
     hssize_t         expected_count = 0;
-    size_t           i = 0;
+    size_t           i              = 0;
     size_t           a;
     size_t           j;
     const char      *check = "setup";
@@ -5921,8 +5872,7 @@ verify_struct_chunk_vlen_edges(hid_t did, hid_t tid, hid_t sid,
     /* Step 1: Check membership independently of the payload representation. */
     check = "defined membership";
 
-    if ((defined_sid =
-             H5Dget_defined(did, H5S_ALL, H5P_DEFAULT)) < 0)
+    if ((defined_sid = H5Dget_defined(did, H5S_ALL, H5P_DEFAULT)) < 0)
         goto error;
 
     for (i = 0; i < 8; i++)
@@ -5937,9 +5887,7 @@ verify_struct_chunk_vlen_edges(hid_t did, hid_t tid, hid_t sid,
 
         coord[0] = (hsize_t)i;
 
-        if ((selected =
-                 H5Sselect_intersect_block(defined_sid,
-                                           coord, coord)) < 0)
+        if ((selected = H5Sselect_intersect_block(defined_sid, coord, coord)) < 0)
             goto error;
 
         if ((selected > 0) != defined[i])
@@ -5952,9 +5900,7 @@ verify_struct_chunk_vlen_edges(hid_t did, hid_t tid, hid_t sid,
     if ((dxpl = H5Pcreate(H5P_DATASET_XFER)) < 0)
         goto error;
 
-    if (H5Pset_vlen_mem_manager(dxpl,
-                                vl_edge_allocate, &mem,
-                                vl_edge_free, &mem) < 0)
+    if (H5Pset_vlen_mem_manager(dxpl, vl_edge_allocate, &mem, vl_edge_free, &mem) < 0)
         goto error;
 
     if (H5Dread(did, tid, sid, H5S_ALL, dxpl, actual) < 0)
@@ -5962,10 +5908,9 @@ verify_struct_chunk_vlen_edges(hid_t did, hid_t tid, hid_t sid,
 
     /* Step 3: Compare every coordinate, including untouched neighbors. */
     for (i = 0; i < 8; i++) {
-        const vl_edge_record_t *want =
-            defined[i] ? &expected[i] : &zero_record;
-        const hvl_t *actual_inner;
-        const hvl_t *expected_inner;
+        const vl_edge_record_t *want = defined[i] ? &expected[i] : &zero_record;
+        const hvl_t            *actual_inner;
+        const hvl_t            *expected_inner;
 
         check = "fixed member";
         if (actual[i].tag != want->tag)
@@ -5985,8 +5930,7 @@ verify_struct_chunk_vlen_edges(hid_t did, hid_t tid, hid_t sid,
 
         check = "array of VL sequences";
         for (a = 0; a < 2; a++)
-            if (!vl_edge_equal_ints(&actual[i].array[a],
-                                    &want->array[a]))
+            if (!vl_edge_equal_ints(&actual[i].array[a], &want->array[a]))
                 goto error;
 
         check = "nested outer sequence";
@@ -6001,8 +5945,7 @@ verify_struct_chunk_vlen_edges(hid_t did, hid_t tid, hid_t sid,
 
         check = "nested inner sequence";
         for (j = 0; j < want->nested.len; j++)
-            if (!vl_edge_equal_ints(&actual_inner[j],
-                                    &expected_inner[j]))
+            if (!vl_edge_equal_ints(&actual_inner[j], &expected_inner[j]))
                 goto error;
     }
 
@@ -6015,8 +5958,7 @@ verify_struct_chunk_vlen_edges(hid_t did, hid_t tid, hid_t sid,
     if (H5Treclaim(tid, sid, dxpl, actual) < 0)
         goto error;
 
-    if (mem.bad_free || mem.live != 0 || mem.head != NULL ||
-        mem.allocations != mem.frees)
+    if (mem.bad_free || mem.live != 0 || mem.head != NULL || mem.allocations != mem.frees)
         goto error;
 
     check = "verification cleanup";
@@ -6035,8 +5977,7 @@ error:
     fprintf(stderr,
             "VL EDGE VERIFY: phase=%u reopened=%u element=%zu "
             "check=%s live=%zu alloc=%zu free=%zu bad_free=%u\n",
-            phase, reopened, i, check, mem.live,
-            mem.allocations, mem.frees, (unsigned)mem.bad_free);
+            phase, reopened, i, check, mem.live, mem.allocations, mem.frees, (unsigned)mem.bad_free);
 
     H5Eprint2(H5E_DEFAULT, stderr);
 
@@ -6120,7 +6061,7 @@ error:
  *              payloads and checks their release through a custom allocator.
  *
  * Return:      SUCCEED after all phases and cleanup; FAIL otherwise.
- * 
+ *
  *                           -- AZO    09/20/26
  *-------------------------------------------------------------------------
  */
@@ -6165,8 +6106,8 @@ test_struct_chunk_vlen_edges(hid_t fcpl, hid_t fapl, bool filtered)
     char  strings[2][8][258];
 
     bool         defined[8] = {false};
-    unsigned int level = 6;
-    unsigned     phase = 0;
+    unsigned int level      = 6;
+    unsigned     phase      = 0;
     unsigned     checkpoint;
     size_t       v, i, a, j;
     const char  *operation = "setup";
@@ -6192,15 +6133,13 @@ test_struct_chunk_vlen_edges(hid_t fcpl, hid_t fapl, bool filtered)
             versions[v][i].tag = (int)(1000 + 100 * v + i);
 
             if (string_kind != 0) {
-                string_len = string_kind == 1 ? 0 :
-                             string_kind == 2 ? 7 : 257;
+                string_len = string_kind == 1 ? 0 : string_kind == 2 ? 7 : 257;
 
                 for (j = 0; j < string_len; j++)
-                    strings[v][i][j] =
-                        (char)('a' + (i + v + j) % 26);
+                    strings[v][i][j] = (char)('a' + (i + v + j) % 26);
 
                 strings[v][i][string_len] = '\0';
-                versions[v][i].text = strings[v][i];
+                versions[v][i].text       = strings[v][i];
             }
 
             for (a = 0; a < 2; a++) {
@@ -6208,25 +6147,20 @@ test_struct_chunk_vlen_edges(hid_t fcpl, hid_t fapl, bool filtered)
                 size_t inner_len = (i + 2 * v + a + 1) % 4;
 
                 for (j = 0; j < 3; j++) {
-                    array_values[v][i][a][j] =
-                        (int)(10000 * v + 100 * i + 10 * a + j);
+                    array_values[v][i][a][j] = (int)(10000 * v + 100 * i + 10 * a + j);
 
-                    nested_values[v][i][a][j] =
-                        -(int)(1 + 10000 * v + 100 * i + 10 * a + j);
+                    nested_values[v][i][a][j] = -(int)(1 + 10000 * v + 100 * i + 10 * a + j);
                 }
 
                 versions[v][i].array[a].len = array_len;
-                versions[v][i].array[a].p =
-                    array_len ? array_values[v][i][a] : NULL;
+                versions[v][i].array[a].p   = array_len ? array_values[v][i][a] : NULL;
 
                 inner[v][i][a].len = inner_len;
-                inner[v][i][a].p =
-                    inner_len ? nested_values[v][i][a] : NULL;
+                inner[v][i][a].p   = inner_len ? nested_values[v][i][a] : NULL;
             }
 
             versions[v][i].nested.len = (i + v) % 3;
-            versions[v][i].nested.p =
-                versions[v][i].nested.len ? inner[v][i] : NULL;
+            versions[v][i].nested.p   = versions[v][i].nested.len ? inner[v][i] : NULL;
         }
     }
 
@@ -6245,24 +6179,19 @@ test_struct_chunk_vlen_edges(hid_t fcpl, hid_t fapl, bool filtered)
     if ((nested_tid = H5Tvlen_create(seq_tid)) < 0)
         TEST_ERROR;
 
-    if ((record_tid =
-             H5Tcreate(H5T_COMPOUND, sizeof(vl_edge_record_t))) < 0)
+    if ((record_tid = H5Tcreate(H5T_COMPOUND, sizeof(vl_edge_record_t))) < 0)
         TEST_ERROR;
 
-    if (H5Tinsert(record_tid, "tag",
-                   HOFFSET(vl_edge_record_t, tag), H5T_NATIVE_INT) < 0)
+    if (H5Tinsert(record_tid, "tag", HOFFSET(vl_edge_record_t, tag), H5T_NATIVE_INT) < 0)
         TEST_ERROR;
 
-    if (H5Tinsert(record_tid, "text",
-                   HOFFSET(vl_edge_record_t, text), string_tid) < 0)
+    if (H5Tinsert(record_tid, "text", HOFFSET(vl_edge_record_t, text), string_tid) < 0)
         TEST_ERROR;
 
-    if (H5Tinsert(record_tid, "array",
-                   HOFFSET(vl_edge_record_t, array), array_tid) < 0)
+    if (H5Tinsert(record_tid, "array", HOFFSET(vl_edge_record_t, array), array_tid) < 0)
         TEST_ERROR;
 
-    if (H5Tinsert(record_tid, "nested",
-                   HOFFSET(vl_edge_record_t, nested), nested_tid) < 0)
+    if (H5Tinsert(record_tid, "nested", HOFFSET(vl_edge_record_t, nested), nested_tid) < 0)
         TEST_ERROR;
 
     /* Step 3: Create two sparse chunks with independent working selections. */
@@ -6282,29 +6211,21 @@ test_struct_chunk_vlen_edges(hid_t fcpl, hid_t fapl, bool filtered)
         TEST_ERROR;
     if (H5Pset_layout(dcpl, H5D_STRUCT_CHUNK) < 0)
         TEST_ERROR;
-    if (H5Pset_struct_chunk(dcpl, 1, chunk_dims,
-                            H5D_SPARSE_CHUNK) < 0)
+    if (H5Pset_struct_chunk(dcpl, 1, chunk_dims, H5D_SPARSE_CHUNK) < 0)
         TEST_ERROR;
 
     if (filtered) {
-        if (H5Pset_filter2(dcpl, H5_SECTION_SELECTION,
-                           H5Z_FILTER_DEFLATE, H5Z_FLAG_OPTIONAL,
-                           1, &level) < 0)
+        if (H5Pset_filter2(dcpl, H5_SECTION_SELECTION, H5Z_FILTER_DEFLATE, H5Z_FLAG_OPTIONAL, 1, &level) < 0)
             TEST_ERROR;
 
-        if (H5Pset_filter2(dcpl, H5_SECTION_FIXED,
-                           H5Z_FILTER_DEFLATE, H5Z_FLAG_OPTIONAL,
-                           1, &level) < 0)
+        if (H5Pset_filter2(dcpl, H5_SECTION_FIXED, H5Z_FILTER_DEFLATE, H5Z_FLAG_OPTIONAL, 1, &level) < 0)
             TEST_ERROR;
 
-        if (H5Pset_filter2(dcpl, H5_SECTION_VL,
-                           H5Z_FILTER_DEFLATE, H5Z_FLAG_OPTIONAL,
-                           1, &level) < 0)
+        if (H5Pset_filter2(dcpl, H5_SECTION_VL, H5Z_FILTER_DEFLATE, H5Z_FLAG_OPTIONAL, 1, &level) < 0)
             TEST_ERROR;
     }
 
-    if ((did = H5Dcreate2(fid, "vlen_edges", record_tid, sid,
-                          H5P_DEFAULT, dcpl, H5P_DEFAULT)) < 0)
+    if ((did = H5Dcreate2(fid, "vlen_edges", record_tid, sid, H5P_DEFAULT, dcpl, H5P_DEFAULT)) < 0)
         TEST_ERROR;
 
     /* Step 4: Execute transitions and verify both resident and reopened states. */
@@ -6318,10 +6239,9 @@ test_struct_chunk_vlen_edges(hid_t fcpl, hid_t fapl, bool filtered)
             case 7:
             case 9:
                 operation = "full recursive write";
-                v = phase == 7 ? 1 : 0;
+                v         = phase == 7 ? 1 : 0;
 
-                if (H5Dwrite(did, record_tid, H5S_ALL, H5S_ALL,
-                             H5P_DEFAULT, versions[v]) < 0)
+                if (H5Dwrite(did, record_tid, H5S_ALL, H5S_ALL, H5P_DEFAULT, versions[v]) < 0)
                     TEST_ERROR;
 
                 for (i = 0; i < 8; i++) {
@@ -6336,19 +6256,16 @@ test_struct_chunk_vlen_edges(hid_t fcpl, hid_t fapl, bool filtered)
                 /* File positions 1 and 6 span the two chunks. */
                 start[0]  = 1;
                 stride[0] = 5;
-                if (H5Sselect_hyperslab(file_sid, H5S_SELECT_SET,
-                                        start, stride, count, NULL) < 0)
+                if (H5Sselect_hyperslab(file_sid, H5S_SELECT_SET, start, stride, count, NULL) < 0)
                     TEST_ERROR;
 
                 /* Memory positions 2 and 5 must map to file positions 1 and 6. */
                 start[0]  = 2;
                 stride[0] = 3;
-                if (H5Sselect_hyperslab(mem_sid, H5S_SELECT_SET,
-                                        start, stride, count, NULL) < 0)
+                if (H5Sselect_hyperslab(mem_sid, H5S_SELECT_SET, start, stride, count, NULL) < 0)
                     TEST_ERROR;
 
-                if (H5Dwrite(did, record_tid, mem_sid, file_sid,
-                             H5P_DEFAULT, versions[1]) < 0)
+                if (H5Dwrite(did, record_tid, mem_sid, file_sid, H5P_DEFAULT, versions[1]) < 0)
                     TEST_ERROR;
 
                 expected[1] = versions[1][2];
@@ -6359,12 +6276,10 @@ test_struct_chunk_vlen_edges(hid_t fcpl, hid_t fapl, bool filtered)
             case 3:
                 operation = "NONE selection read and write";
 
-                if (H5Sselect_none(file_sid) < 0 ||
-                    H5Sselect_none(mem_sid) < 0)
+                if (H5Sselect_none(file_sid) < 0 || H5Sselect_none(mem_sid) < 0)
                     TEST_ERROR;
 
-                if (H5Dwrite(did, record_tid, mem_sid, file_sid,
-                             H5P_DEFAULT, versions[1]) < 0)
+                if (H5Dwrite(did, record_tid, mem_sid, file_sid, H5P_DEFAULT, versions[1]) < 0)
                     TEST_ERROR;
 
                 /*
@@ -6374,12 +6289,10 @@ test_struct_chunk_vlen_edges(hid_t fcpl, hid_t fapl, bool filtered)
                 memcpy(untouched, versions[0], sizeof(untouched));
                 memcpy(untouched_before, untouched, sizeof(untouched));
 
-                if (H5Dread(did, record_tid, mem_sid, file_sid,
-                            H5P_DEFAULT, untouched) < 0)
+                if (H5Dread(did, record_tid, mem_sid, file_sid, H5P_DEFAULT, untouched) < 0)
                     TEST_ERROR;
 
-                if (memcmp(untouched, untouched_before,
-                           sizeof(untouched)) != 0)
+                if (memcmp(untouched, untouched_before, sizeof(untouched)) != 0)
                     TEST_ERROR;
                 break;
 
@@ -6389,8 +6302,7 @@ test_struct_chunk_vlen_edges(hid_t fcpl, hid_t fapl, bool filtered)
 
                 start[0]  = 1;
                 stride[0] = 5;
-                if (H5Sselect_hyperslab(file_sid, H5S_SELECT_SET,
-                                        start, stride, count, NULL) < 0)
+                if (H5Sselect_hyperslab(file_sid, H5S_SELECT_SET, start, stride, count, NULL) < 0)
                     TEST_ERROR;
 
                 if (H5Derase(did, file_sid, H5P_DEFAULT) < 0)
@@ -6413,8 +6325,7 @@ test_struct_chunk_vlen_edges(hid_t fcpl, hid_t fapl, bool filtered)
             case 8:
                 operation = "replace with defined null records";
 
-                if (H5Dwrite(did, record_tid, H5S_ALL, H5S_ALL,
-                             H5P_DEFAULT, zeros) < 0)
+                if (H5Dwrite(did, record_tid, H5S_ALL, H5S_ALL, H5P_DEFAULT, zeros) < 0)
                     TEST_ERROR;
 
                 memcpy(expected, zeros, sizeof(expected));
@@ -6445,9 +6356,8 @@ test_struct_chunk_vlen_edges(hid_t fcpl, hid_t fapl, bool filtered)
                     TEST_ERROR;
             }
 
-            if (verify_struct_chunk_vlen_edges(
-                    did, record_tid, sid, expected, defined,
-                    phase, checkpoint) < 0)
+            if (verify_struct_chunk_vlen_edges(did, record_tid, sid, expected, defined, phase, checkpoint) <
+                0)
                 TEST_ERROR;
         }
     }
@@ -6455,11 +6365,11 @@ test_struct_chunk_vlen_edges(hid_t fcpl, hid_t fapl, bool filtered)
     /* Step 5: Close locally owned IDs; never reclaim borrowed write payloads. */
     operation = "final cleanup";
 
-#define VL_EDGE_CLOSE(call, id)                                                 \
-    do {                                                                        \
-        if ((call)(id) < 0)                                                     \
-            TEST_ERROR;                                                         \
-        (id) = H5I_INVALID_HID;                                                 \
+#define VL_EDGE_CLOSE(call, id)                                                                              \
+    do {                                                                                                     \
+        if ((call)(id) < 0)                                                                                  \
+            TEST_ERROR;                                                                                      \
+        (id) = H5I_INVALID_HID;                                                                              \
     } while (0)
 
     VL_EDGE_CLOSE(H5Dclose, did);
@@ -6480,25 +6390,35 @@ test_struct_chunk_vlen_edges(hid_t fcpl, hid_t fapl, bool filtered)
     return SUCCEED;
 
 error:
-    fprintf(stderr,
-            "VL EDGE TEST: filtered=%u phase=%u operation=%s\n",
-            (unsigned)filtered, phase, operation);
+    fprintf(stderr, "VL EDGE TEST: filtered=%u phase=%u operation=%s\n", (unsigned)filtered, phase,
+            operation);
 
     H5Eprint2(H5E_DEFAULT, stderr);
 
     H5E_BEGIN_TRY
     {
-        if (did >= 0)        H5Dclose(did);
-        if (fid >= 0)        H5Fclose(fid);
-        if (mem_sid >= 0)    H5Sclose(mem_sid);
-        if (file_sid >= 0)   H5Sclose(file_sid);
-        if (sid >= 0)        H5Sclose(sid);
-        if (dcpl >= 0)       H5Pclose(dcpl);
-        if (record_tid >= 0) H5Tclose(record_tid);
-        if (nested_tid >= 0) H5Tclose(nested_tid);
-        if (array_tid >= 0)  H5Tclose(array_tid);
-        if (seq_tid >= 0)    H5Tclose(seq_tid);
-        if (string_tid >= 0) H5Tclose(string_tid);
+        if (did >= 0)
+            H5Dclose(did);
+        if (fid >= 0)
+            H5Fclose(fid);
+        if (mem_sid >= 0)
+            H5Sclose(mem_sid);
+        if (file_sid >= 0)
+            H5Sclose(file_sid);
+        if (sid >= 0)
+            H5Sclose(sid);
+        if (dcpl >= 0)
+            H5Pclose(dcpl);
+        if (record_tid >= 0)
+            H5Tclose(record_tid);
+        if (nested_tid >= 0)
+            H5Tclose(nested_tid);
+        if (array_tid >= 0)
+            H5Tclose(array_tid);
+        if (seq_tid >= 0)
+            H5Tclose(seq_tid);
+        if (string_tid >= 0)
+            H5Tclose(string_tid);
     }
     H5E_END_TRY
 
@@ -6521,7 +6441,7 @@ error:
  *              This generator is for test data, not cryptographic use.
  *
  * Return:      Next deterministic 64-bit output value.
- * 
+ *
  *                                              --AZO    09/20/26
  *-------------------------------------------------------------------------
  */
@@ -6560,7 +6480,7 @@ struct_chunk_vlen_stress_rand(uint64_t *state)
  *              used by this test on platforms with at least 32-bit int.
  *
  * Return:      Deterministic nonnegative payload value; no state is changed.
- * 
+ *
  *                                               --AZO    09/20/26
  *-------------------------------------------------------------------------
  */
@@ -6568,8 +6488,7 @@ static int
 struct_chunk_vlen_stress_value(uint64_t tag, size_t element, size_t item)
 {
     /* Regenerate the same item without advancing the operation generator. */
-    return (int)((tag * UINT64_C(1315423911) + element * UINT64_C(2654435761) + item) &
-                 UINT64_C(0x7fffffff));
+    return (int)((tag * UINT64_C(1315423911) + element * UINT64_C(2654435761) + item) & UINT64_C(0x7fffffff));
 
 } /* end struct_chunk_vlen_stress_value() */
 
@@ -6605,18 +6524,17 @@ struct_chunk_vlen_stress_value(uint64_t tag, size_t element, size_t item)
  *
  * Return:      SUCCEED when all comparisons and normal cleanup succeed;
  *              FAIL with diagnostics identifying the failed check.
- * 
+ *
  *                                            --AZO   09/20/26
  *-------------------------------------------------------------------------
  */
 static herr_t
-verify_struct_chunk_vlen_stress(hid_t did, hid_t tid, hid_t sid, unsigned rank,
-                                const hsize_t *dims, const bool *defined,
-                                const size_t *lengths, const uint64_t *tags)
+verify_struct_chunk_vlen_stress(hid_t did, hid_t tid, hid_t sid, unsigned rank, const hsize_t *dims,
+                                const bool *defined, const size_t *lengths, const uint64_t *tags)
 {
-    hid_t    defined_sid     = H5I_INVALID_HID;
-    hvl_t   *rbuf            = NULL;
-    hsize_t  coord[2]        = {0, 0};
+    hid_t    defined_sid      = H5I_INVALID_HID;
+    hvl_t   *rbuf             = NULL;
+    hsize_t  coord[2]         = {0, 0};
     hsize_t  expected_defined = 0;
     hssize_t actual_defined;
     size_t   i;
@@ -6647,10 +6565,8 @@ verify_struct_chunk_vlen_stress(hid_t did, hid_t tid, hid_t sid, unsigned rank,
     }
 
     if (actual_defined != (hssize_t)expected_defined) {
-        fprintf(stderr,
-                "VL VERIFY: defined-count mismatch: expected=%llu actual=%lld\n",
-                (unsigned long long)expected_defined,
-                (long long)actual_defined);
+        fprintf(stderr, "VL VERIFY: defined-count mismatch: expected=%llu actual=%lld\n",
+                (unsigned long long)expected_defined, (long long)actual_defined);
         goto error;
     }
 
@@ -6666,11 +6582,8 @@ verify_struct_chunk_vlen_stress(hid_t did, hid_t tid, hid_t sid, unsigned rank,
             coord[1] = (hsize_t)i % dims[1];
         }
 
-        if ((selected =
-                 H5Sselect_intersect_block(defined_sid, coord, coord)) < 0) {
-            fprintf(stderr,
-                    "VL VERIFY: selection intersection failed at element=%zu\n",
-                    i);
+        if ((selected = H5Sselect_intersect_block(defined_sid, coord, coord)) < 0) {
+            fprintf(stderr, "VL VERIFY: selection intersection failed at element=%zu\n", i);
             H5Eprint2(H5E_DEFAULT, stderr);
             goto error;
         }
@@ -6697,8 +6610,7 @@ verify_struct_chunk_vlen_stress(hid_t did, hid_t tid, hid_t sid, unsigned rank,
         /* Membership was checked separately, so empty fill is unambiguous. */
         if (!defined[i]) {
             if (rbuf[i].len != 0) {
-                fprintf(stderr, "VL VERIFY: undefined element=%zu has length=%zu\n",
-                        i, (size_t)rbuf[i].len);
+                fprintf(stderr, "VL VERIFY: undefined element=%zu has length=%zu\n", i, (size_t)rbuf[i].len);
                 goto error;
             }
 
@@ -6706,23 +6618,22 @@ verify_struct_chunk_vlen_stress(hid_t did, hid_t tid, hid_t sid, unsigned rank,
         }
 
         if (rbuf[i].len != lengths[i]) {
-            fprintf(stderr, "VL VERIFY: length mismatch at element=%zu: "
+            fprintf(stderr,
+                    "VL VERIFY: length mismatch at element=%zu: "
                     "expected=%zu actual=%zu\n",
                     i, lengths[i], (size_t)rbuf[i].len);
             goto error;
         }
 
         if (lengths[i] > 0 && !rbuf[i].p) {
-            fprintf(stderr, "VL VERIFY: element=%zu has length=%zu but NULL payload\n",
-                    i, lengths[i]);
+            fprintf(stderr, "VL VERIFY: element=%zu has length=%zu but NULL payload\n", i, lengths[i]);
             goto error;
         }
 
         /* Check item order as well as descriptor length and pointer validity. */
         for (j = 0; j < lengths[i]; j++) {
-            int expected =
-                struct_chunk_vlen_stress_value(tags[i], i, j);
-            int actual = ((int *)rbuf[i].p)[j];
+            int expected = struct_chunk_vlen_stress_value(tags[i], i, j);
+            int actual   = ((int *)rbuf[i].p)[j];
 
             if (actual != expected) {
                 fprintf(stderr,
@@ -6867,44 +6778,44 @@ error:
  *-------------------------------------------------------------------------
  */
 static herr_t
-test_struct_chunk_vlen_stress(hid_t fcpl, hid_t fapl, unsigned chk_type, bool filtered,
-                              size_t iterations, uint64_t seed)
+test_struct_chunk_vlen_stress(hid_t fcpl, hid_t fapl, unsigned chk_type, bool filtered, size_t iterations,
+                              uint64_t seed)
 {
-    char               filename[FILENAME_BUF_SIZE];
-    hid_t              fid      = H5I_INVALID_HID;
-    hid_t              sid      = H5I_INVALID_HID;
-    hid_t              op_sid   = H5I_INVALID_HID;
-    hid_t              mem_sid  = H5I_INVALID_HID;
-    hid_t              dcpl     = H5I_INVALID_HID;
-    hid_t              did      = H5I_INVALID_HID;
-    hid_t              tid      = H5I_INVALID_HID;
-    H5D_chunk_index_t  idx_type;
-    H5D_chunk_index_t  expected_idx;
-    hsize_t            dims[2]       = {VL_STRESS_NELMTS, 1};
-    hsize_t            maxdims[2]    = {VL_STRESS_NELMTS, 1};
-    hsize_t            chunk_dims[2] = {8, 1};
-    hsize_t            mem_dims[1]   = {4};
-    hsize_t            start[2]      = {0, 0};
-    hsize_t            count[2]      = {1, 1};
-    hsize_t            slab_start[2] = {0, 0}; /* Base region retained for overlap */
-    hsize_t            repeat_start[2] = {0, 0}; /* Region reused for replacement and erase */
-    size_t             elements[4];             /* File indices in transfer order */
-    size_t             single_element = 0;     /* Reused by single-element erase */
-    bool               defined[VL_STRESS_NELMTS];
-    size_t             lengths[VL_STRESS_NELMTS];
-    uint64_t           tags[VL_STRESS_NELMTS];
-    int                payload[4][VL_STRESS_MAX_LEN];
-    hvl_t              wvalues[4];
-    size_t             write_lengths[4];
-    uint64_t           write_tags[4];
-    unsigned int       level = 6;
-    unsigned           rank;
-    size_t             iter = 0;
-    size_t             ndefined = 0;
-    uint64_t           rng;
-    size_t             nselected = 0;
-    const char        *operation = "setup";
-    const char        *phase     = "create";
+    char              filename[FILENAME_BUF_SIZE];
+    hid_t             fid     = H5I_INVALID_HID;
+    hid_t             sid     = H5I_INVALID_HID;
+    hid_t             op_sid  = H5I_INVALID_HID;
+    hid_t             mem_sid = H5I_INVALID_HID;
+    hid_t             dcpl    = H5I_INVALID_HID;
+    hid_t             did     = H5I_INVALID_HID;
+    hid_t             tid     = H5I_INVALID_HID;
+    H5D_chunk_index_t idx_type;
+    H5D_chunk_index_t expected_idx;
+    hsize_t           dims[2]         = {VL_STRESS_NELMTS, 1};
+    hsize_t           maxdims[2]      = {VL_STRESS_NELMTS, 1};
+    hsize_t           chunk_dims[2]   = {8, 1};
+    hsize_t           mem_dims[1]     = {4};
+    hsize_t           start[2]        = {0, 0};
+    hsize_t           count[2]        = {1, 1};
+    hsize_t           slab_start[2]   = {0, 0}; /* Base region retained for overlap */
+    hsize_t           repeat_start[2] = {0, 0}; /* Region reused for replacement and erase */
+    size_t            elements[4];              /* File indices in transfer order */
+    size_t            single_element = 0;       /* Reused by single-element erase */
+    bool              defined[VL_STRESS_NELMTS];
+    size_t            lengths[VL_STRESS_NELMTS];
+    uint64_t          tags[VL_STRESS_NELMTS];
+    int               payload[4][VL_STRESS_MAX_LEN];
+    hvl_t             wvalues[4];
+    size_t            write_lengths[4];
+    uint64_t          write_tags[4];
+    unsigned int      level = 6;
+    unsigned          rank;
+    size_t            iter     = 0;
+    size_t            ndefined = 0;
+    uint64_t          rng;
+    size_t            nselected = 0;
+    const char       *operation = "setup";
+    const char       *phase     = "create";
 
     TESTING("structured chunk VL model-based smoke/stress");
 
@@ -6932,12 +6843,12 @@ test_struct_chunk_vlen_stress(hid_t fcpl, hid_t fapl, unsigned chk_type, bool fi
             expected_idx = H5D_CHUNK_IDX_EARRAY;
             break;
         default:
-            rank          = 2;
-            dims[0]       = dims[1] = 8;
-            maxdims[0]    = maxdims[1] = H5S_UNLIMITED;
-            chunk_dims[0] = 2;
-            chunk_dims[1] = 4;
-            expected_idx  = H5D_CHUNK_IDX_BT2;
+            rank    = 2;
+            dims[0] = dims[1] = 8;
+            maxdims[0] = maxdims[1] = H5S_UNLIMITED;
+            chunk_dims[0]           = 2;
+            chunk_dims[1]           = 4;
+            expected_idx            = H5D_CHUNK_IDX_BT2;
             break;
     }
 
@@ -6963,14 +6874,11 @@ test_struct_chunk_vlen_stress(hid_t fcpl, hid_t fapl, unsigned chk_type, bool fi
 
     /* Configure each independently stored section with the same filter. */
     if (filtered) {
-        if (H5Pset_filter2(dcpl, H5_SECTION_SELECTION, H5Z_FILTER_DEFLATE,
-                           H5Z_FLAG_OPTIONAL, 1, &level) < 0)
+        if (H5Pset_filter2(dcpl, H5_SECTION_SELECTION, H5Z_FILTER_DEFLATE, H5Z_FLAG_OPTIONAL, 1, &level) < 0)
             TEST_ERROR;
-        if (H5Pset_filter2(dcpl, H5_SECTION_FIXED, H5Z_FILTER_DEFLATE,
-                           H5Z_FLAG_OPTIONAL, 1, &level) < 0)
+        if (H5Pset_filter2(dcpl, H5_SECTION_FIXED, H5Z_FILTER_DEFLATE, H5Z_FLAG_OPTIONAL, 1, &level) < 0)
             TEST_ERROR;
-        if (H5Pset_filter2(dcpl, H5_SECTION_VL, H5Z_FILTER_DEFLATE,
-                           H5Z_FLAG_OPTIONAL, 1, &level) < 0)
+        if (H5Pset_filter2(dcpl, H5_SECTION_VL, H5Z_FILTER_DEFLATE, H5Z_FLAG_OPTIONAL, 1, &level) < 0)
             TEST_ERROR;
     }
 
@@ -7009,9 +6917,9 @@ test_struct_chunk_vlen_stress(hid_t fcpl, hid_t fapl, unsigned chk_type, bool fi
         }
 
         if (step == 0 || step == 1 || step == 5) {
-            operation = step == 0 ? "crossing hyperslab write" :
-                        step == 1 ? "overlapping hyperslab replacement" :
-                                    "hyperslab erase";
+            operation = step == 0   ? "crossing hyperslab write"
+                        : step == 1 ? "overlapping hyperslab replacement"
+                                    : "hyperslab erase";
             nselected = 4;
             start[0]  = slab_start[0];
             start[1]  = slab_start[1];
@@ -7024,14 +6932,14 @@ test_struct_chunk_vlen_stress(hid_t fcpl, hid_t fapl, unsigned chk_type, bool fi
 
             /* Hyperslabs transfer in row-major coordinate order. */
             for (i = 0; i < nselected; i++)
-                elements[i] = rank == 1 ? (size_t)start[0] + i :
-                              ((size_t)start[0] + i / 2) * (size_t)dims[1] +
-                                  (size_t)start[1] + i % 2;
+                elements[i] = rank == 1
+                                  ? (size_t)start[0] + i
+                                  : ((size_t)start[0] + i / 2) * (size_t)dims[1] + (size_t)start[1] + i % 2;
         }
         else if (step >= 2 && step <= 4) {
-            operation = step == 2 ? "repeated-region hyperslab write" :
-                        step == 3 ? "same-region hyperslab replacement" :
-                                    "same-region hyperslab erase";
+            operation = step == 2   ? "repeated-region hyperslab write"
+                        : step == 3 ? "same-region hyperslab replacement"
+                                    : "same-region hyperslab erase";
             nselected = 4;
 
             /*
@@ -7045,16 +6953,12 @@ test_struct_chunk_vlen_stress(hid_t fcpl, hid_t fapl, unsigned chk_type, bool fi
              */
             if (step == 2) {
                 if (rank == 1) {
-                    repeat_start[0] =
-                        (hsize_t)(random % (dims[0] - 3));
+                    repeat_start[0] = (hsize_t)(random % (dims[0] - 3));
                     repeat_start[1] = 0;
                 }
                 else {
-                    repeat_start[0] =
-                        (hsize_t)(random % (dims[0] - 1));
-                    repeat_start[1] =
-                        (hsize_t)(struct_chunk_vlen_stress_rand(&rng) %
-                                  (dims[1] - 1));
+                    repeat_start[0] = (hsize_t)(random % (dims[0] - 1));
+                    repeat_start[1] = (hsize_t)(struct_chunk_vlen_stress_rand(&rng) % (dims[1] - 1));
                 }
             }
 
@@ -7063,8 +6967,7 @@ test_struct_chunk_vlen_stress(hid_t fcpl, hid_t fapl, unsigned chk_type, bool fi
             count[0] = rank == 1 ? 4 : 2;
             count[1] = rank == 1 ? 1 : 2;
 
-            if (H5Sselect_hyperslab(op_sid, H5S_SELECT_SET, start,
-                                    NULL, count, NULL) < 0)
+            if (H5Sselect_hyperslab(op_sid, H5S_SELECT_SET, start, NULL, count, NULL) < 0)
                 TEST_ERROR;
 
             /*
@@ -7072,11 +6975,9 @@ test_struct_chunk_vlen_stress(hid_t fcpl, hid_t fapl, unsigned chk_type, bool fi
              * row-major traversal order when updating the reference model.
              */
             for (i = 0; i < nselected; i++)
-                elements[i] =
-                    rank == 1
-                        ? (size_t)start[0] + i
-                        : ((size_t)start[0] + i / 2) * (size_t)dims[1] +
-                              (size_t)start[1] + i % 2;
+                elements[i] = rank == 1
+                                  ? (size_t)start[0] + i
+                                  : ((size_t)start[0] + i / 2) * (size_t)dims[1] + (size_t)start[1] + i % 2;
         }
         else {
             /* Retain the chosen element so cycle position 7 erases position 6. */
@@ -7085,9 +6986,8 @@ test_struct_chunk_vlen_stress(hid_t fcpl, hid_t fapl, unsigned chk_type, bool fi
             if (step == 6)
                 single_element = (size_t)(random % VL_STRESS_NELMTS);
             elements[0] = single_element;
-            start[0] = rank == 1 ? (hsize_t)single_element :
-                                  (hsize_t)single_element / dims[1];
-            start[1] = rank == 1 ? 0 : (hsize_t)single_element % dims[1];
+            start[0]    = rank == 1 ? (hsize_t)single_element : (hsize_t)single_element / dims[1];
+            start[1]    = rank == 1 ? 0 : (hsize_t)single_element % dims[1];
             count[0] = count[1] = 1;
             if (H5Sselect_hyperslab(op_sid, H5S_SELECT_SET, start, NULL, count, NULL) < 0)
                 TEST_ERROR;
@@ -7117,26 +7017,41 @@ test_struct_chunk_vlen_stress(hid_t fcpl, hid_t fapl, unsigned chk_type, bool fi
              * only H5Derase removes a coordinate from the defined selection.
              */
             for (i = 0; i < nselected; i++) {
-                size_t len;
-                uint64_t tag = struct_chunk_vlen_stress_rand(&rng) ^
-                               (uint64_t)iter ^ seed;
+                size_t   len;
+                uint64_t tag = struct_chunk_vlen_stress_rand(&rng) ^ (uint64_t)iter ^ seed;
 
                 switch ((unsigned)((iter + i) % 8)) {
-                    case 0:  len = 0; break;
-                    case 1:  len = 1; break;
-                    case 2:  len = 2 + (size_t)(tag % 7); break;
-                    case 3:  len = 31; break;
-                    case 4:  len = 64; break;
-                    case 5:  len = 127; break;
-                    case 6:  len = VL_STRESS_MAX_LEN; break;
-                    default: len = 1 + (size_t)(tag % VL_STRESS_MAX_LEN); break;
+                    case 0:
+                        len = 0;
+                        break;
+                    case 1:
+                        len = 1;
+                        break;
+                    case 2:
+                        len = 2 + (size_t)(tag % 7);
+                        break;
+                    case 3:
+                        len = 31;
+                        break;
+                    case 4:
+                        len = 64;
+                        break;
+                    case 5:
+                        len = 127;
+                        break;
+                    case 6:
+                        len = VL_STRESS_MAX_LEN;
+                        break;
+                    default:
+                        len = 1 + (size_t)(tag % VL_STRESS_MAX_LEN);
+                        break;
                 }
                 for (j = 0; j < len; j++)
                     payload[i][j] = struct_chunk_vlen_stress_value(tag, elements[i], j);
 
                 /* Write buffers borrow stack storage; empty values need no payload. */
-                wvalues[i].len  = len;
-                wvalues[i].p    = len ? payload[i] : NULL;
+                wvalues[i].len   = len;
+                wvalues[i].p     = len ? payload[i] : NULL;
                 write_lengths[i] = len;
                 write_tags[i]    = tag;
             }
@@ -7174,8 +7089,7 @@ test_struct_chunk_vlen_stress(hid_t fcpl, hid_t fapl, unsigned chk_type, bool fi
         /* Step 6: Verify the complete dataset after the operation. */
         /* Check all coordinates, including those outside the current selection. */
         phase = "resident verification";
-        if (verify_struct_chunk_vlen_stress(did, tid, sid, rank, dims,
-                                            defined, lengths, tags) < 0)
+        if (verify_struct_chunk_vlen_stress(did, tid, sid, rank, dims, defined, lengths, tags) < 0)
             TEST_ERROR;
 
         /* Step 7: Check persistence every 31 operations. */
@@ -7200,8 +7114,7 @@ test_struct_chunk_vlen_stress(hid_t fcpl, hid_t fapl, unsigned chk_type, bool fi
             if ((did = H5Dopen2(fid, "vlen_stress", H5P_DEFAULT)) < 0)
                 TEST_ERROR;
 
-            if (verify_struct_chunk_vlen_stress(did, tid, sid, rank, dims,
-                                                defined, lengths, tags) < 0) {
+            if (verify_struct_chunk_vlen_stress(did, tid, sid, rank, dims, defined, lengths, tags) < 0) {
                 printf("    VL stress state became incorrect after close/reopen\n");
                 TEST_ERROR;
             }
@@ -7255,10 +7168,10 @@ test_struct_chunk_vlen_stress(hid_t fcpl, hid_t fapl, unsigned chk_type, bool fi
 
 error:
     /* Step 9 (failure path): Report context and release remaining resources. */
-    printf("    VL stress failure: index=%u filtered=%u iteration=%zu seed=%llu\n",
-           chk_type, (unsigned)filtered, iter, (unsigned long long)seed);
-    printf("    phase=%s operation=%s selected=%zu expected_defined=%zu\n",
-           phase, operation, nselected, ndefined);
+    printf("    VL stress failure: index=%u filtered=%u iteration=%zu seed=%llu\n", chk_type,
+           (unsigned)filtered, iter, (unsigned long long)seed);
+    printf("    phase=%s operation=%s selected=%zu expected_defined=%zu\n", phase, operation, nselected,
+           ndefined);
     H5E_BEGIN_TRY
     {
         H5Dclose(did);
@@ -8253,10 +8166,9 @@ main(void)
         uint64_t    stress_seed       = UINT64_C(0x6a09e667f3bcc909);
         const char *env_value;
 
-        if ((env_value = getenv("HDF5_STRUCT_CHUNK_VL_STRESS_ITERS")) &&
-            *env_value) {
-            char               *end     = NULL;
-            unsigned long long  parsed  = strtoull(env_value, &end, 10);
+        if ((env_value = getenv("HDF5_STRUCT_CHUNK_VL_STRESS_ITERS")) && *env_value) {
+            char              *end    = NULL;
+            unsigned long long parsed = strtoull(env_value, &end, 10);
 
             if (!end || *end != '\0' || parsed > (unsigned long long)SIZE_MAX)
                 TEST_ERROR;
@@ -8264,10 +8176,9 @@ main(void)
             stress_iterations = (size_t)parsed;
         }
 
-        if ((env_value = getenv("HDF5_STRUCT_CHUNK_VL_STRESS_SEED")) &&
-            *env_value) {
-            char               *end    = NULL;
-            unsigned long long  parsed = strtoull(env_value, &end, 0);
+        if ((env_value = getenv("HDF5_STRUCT_CHUNK_VL_STRESS_SEED")) && *env_value) {
+            char              *end    = NULL;
+            unsigned long long parsed = strtoull(env_value, &end, 0);
 
             if (!end || *end != '\0')
                 TEST_ERROR;
@@ -8280,8 +8191,7 @@ main(void)
             TEST_ERROR;
 
         /* Read and write these test files using the latest format bounds. */
-        if (H5Pset_libver_bounds(vl_fapl, H5F_LIBVER_LATEST,
-                                H5F_LIBVER_LATEST) < 0)
+        if (H5Pset_libver_bounds(vl_fapl, H5F_LIBVER_LATEST, H5F_LIBVER_LATEST) < 0)
             TEST_ERROR;
 
         /*
@@ -8328,17 +8238,14 @@ main(void)
 
             for (use_filter = 0; use_filter < 2; use_filter++) {
 
-                nerrors += (test_struct_chunk_vlen_large(fcpl, vl_fapl, type,
-                                                         (bool)use_filter) < 0);
+                nerrors += (test_struct_chunk_vlen_large(fcpl, vl_fapl, type, (bool)use_filter) < 0);
             }
-
         }
 
         /* Also check large payloads in the B-tree 2 index case. */
         for (use_filter = 0; use_filter < 2; use_filter++) {
 
-            nerrors += (test_struct_chunk_vlen_large(fcpl, vl_fapl, 0,
-                                                     (bool)use_filter) < 0);
+            nerrors += (test_struct_chunk_vlen_large(fcpl, vl_fapl, 0, (bool)use_filter) < 0);
         }
 
         /*
@@ -8357,10 +8264,8 @@ main(void)
          * empty. Run each scenario with both filter configurations.
          */
         for (use_filter = 0; use_filter < 2; use_filter++) {
-            nerrors += (test_struct_chunk_vlen_erase(fcpl, vl_fapl,
-                                                     (bool)use_filter) < 0);
-            nerrors += (test_struct_chunk_vlen_empty_section(fcpl, vl_fapl,
-                                                             (bool)use_filter) < 0);
+            nerrors += (test_struct_chunk_vlen_erase(fcpl, vl_fapl, (bool)use_filter) < 0);
+            nerrors += (test_struct_chunk_vlen_empty_section(fcpl, vl_fapl, (bool)use_filter) < 0);
         }
 
         /* Check VL values when the memory and file datatypes require conversion. */
@@ -8382,26 +8287,24 @@ main(void)
          */
         nerrors += (test_local_heapset_stable_slots(fcpl, vl_fapl) < 0);
 
-             /*
+        /*
          * Run a deterministic state-machine test across every index and both
          * filter modes.  It continuously compares HDF5 with an independent
          * model and periodically forces complete file-close/reopen cycles.
          */
         if (stress_iterations > 0) {
 
-            printf("\nVL stress configuration: %zu iterations per case, seed=%llu\n",
-                   stress_iterations, (unsigned long long)stress_seed);
+            printf("\nVL stress configuration: %zu iterations per case, seed=%llu\n", stress_iterations,
+                   (unsigned long long)stress_seed);
 
             for (type = CHK_SINGLE; type <= CHK_EA; type++)
                 for (use_filter = 0; use_filter < 2; use_filter++)
-                    nerrors += (test_struct_chunk_vlen_stress(
-                                    fcpl, vl_fapl, type, (bool)use_filter, stress_iterations,
-                                    stress_seed) < 0);
+                    nerrors += (test_struct_chunk_vlen_stress(fcpl, vl_fapl, type, (bool)use_filter,
+                                                              stress_iterations, stress_seed) < 0);
 
             for (use_filter = 0; use_filter < 2; use_filter++)
-                nerrors += (test_struct_chunk_vlen_stress(
-                                fcpl, vl_fapl, 0, (bool)use_filter, stress_iterations,
-                                stress_seed) < 0);
+                nerrors += (test_struct_chunk_vlen_stress(fcpl, vl_fapl, 0, (bool)use_filter,
+                                                          stress_iterations, stress_seed) < 0);
         }
 
         /* Remove files produced by this test group using its VL-specific FAPL. */

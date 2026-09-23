@@ -1216,9 +1216,9 @@ H5Z_ignore_filters(hid_t dcpl_id, const H5T_t *type, const H5S_t *space)
             HGOTO_ERROR(H5E_PLIST, H5E_CANTGET, FAIL, "can't retrieve layout");
 
         /*
-        * Structured chunks filter their sections independently, including
-        * sections belonging to a VL datatype.
-        */
+         * Structured chunks filter their sections independently, including
+         * sections belonging to a VL datatype.
+         */
         if (layout.type == H5D_STRUCT_CHUNK && space_class == H5S_SIMPLE)
             HGOTO_DONE(false);
 
@@ -1232,17 +1232,15 @@ H5Z_ignore_filters(hid_t dcpl_id, const H5T_t *type, const H5S_t *space)
                 const H5O_stc_filter_sect_t *filt_sect;
                 const H5Z_filter_info_t     *filter;
 
-                for (ii = 0, filt_sect = &pline.filt_sects[0];
-                    ii < pline.tot_filt_nsects;
-                    ii++, filt_sect++) {
+                for (ii = 0, filt_sect = &pline.filt_sects[0]; ii < pline.tot_filt_nsects;
+                     ii++, filt_sect++) {
                     size_t filter_idx;
 
                     for (filter_idx = 0; filter_idx < filt_sect->nused; filter_idx++) {
                         const H5Z_filter_info_t *filter = &filt_sect->filter[filter_idx];
 
                         if (!(filter->flags & H5Z_FLAG_OPTIONAL))
-                            HGOTO_ERROR(H5E_PLINE, H5E_CANTFILTER, FAIL,
-                                        "not suitable for filters");
+                            HGOTO_ERROR(H5E_PLINE, H5E_CANTFILTER, FAIL, "not suitable for filters");
                     }
                 }
             }

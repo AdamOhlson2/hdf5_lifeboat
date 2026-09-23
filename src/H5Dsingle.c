@@ -664,13 +664,13 @@ H5D__single_idx_dump(const void *store, FILE *stream)
  * Purpose:     Initialize the indexing information for a dataset.
  *
  * Return:      Non-negative on success/Negative on failure
- * 
- * Updated:     Updated for VL support. For a three-section structured 
+ *
+ * Updated:     Updated for VL support. For a three-section structured
  *              chunk containing VL data, use the full eight-byte chunk-
- *              size field. The serialized VL heap payload is not bounded 
- *              by the fixed logical chunk size, so that size cannot be 
+ *              size field. The serialized VL heap payload is not bounded
+ *              by the fixed logical chunk size, so that size cannot be
  *              used to derive a safe narrower field.
- * 
+ *
  *                                              -- AZO  09/16/26
  *
  *-------------------------------------------------------------------------
@@ -695,11 +695,11 @@ H5D__single_stc_idx_init(const H5D_chk_idx_info_t *idx_info, const H5S_t H5_ATTR
      * size (encoded selection + data) make the chunk larger.
      */
 
-    /* Update: 
-    * A three-section VL chunk includes serialized heap payloads whose size is
-    * not bounded by the fixed logical chunk size. Use the full uint64_t width
-    * for its encoded single-chunk size.
-    */
+    /* Update:
+     * A three-section VL chunk includes serialized heap payloads whose size is
+     * not bounded by the fixed logical chunk size. Use the full uint64_t width
+     * for its encoded single-chunk size.
+     */
     if (idx_info->stc_storage->nsects == H5_SECTION_NUM)
         chunk_size_len = 8;
     else {

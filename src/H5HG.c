@@ -3407,13 +3407,12 @@ done:
  *              A NULL or logically empty source produces a NULL copy.
  *
  * Return:      SUCCEED/FAIL
- * 
+ *
  *                                              -- AZO   09/12/26
  *-------------------------------------------------------------------------
  */
 herr_t
-H5HG__copy_local_heapset(H5F_t *f, const H5HG_local_heapset_t *heapset,
-                         H5HG_local_heapset_t **copy_out)
+H5HG__copy_local_heapset(H5F_t *f, const H5HG_local_heapset_t *heapset, H5HG_local_heapset_t **copy_out)
 {
     H5HG_local_heapset_t *copy       = NULL;
     uint8_t              *image      = NULL;
@@ -3432,8 +3431,7 @@ H5HG__copy_local_heapset(H5F_t *f, const H5HG_local_heapset_t *heapset,
      * empty source intentionally produces a zero-length image.
      */
     if (H5HG__encode_local_heapset(f, heapset, &image, &image_size) < 0)
-        HGOTO_ERROR(H5E_HEAP, H5E_CANTENCODE, FAIL,
-                    "unable to encode chunk-local heap-set copy");
+        HGOTO_ERROR(H5E_HEAP, H5E_CANTENCODE, FAIL, "unable to encode chunk-local heap-set copy");
 
     if (0 == image_size) {
         assert(NULL == image);
@@ -3441,12 +3439,10 @@ H5HG__copy_local_heapset(H5F_t *f, const H5HG_local_heapset_t *heapset,
     }
 
     if (NULL == image)
-        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, FAIL,
-                    "encoded chunk-local heap-set image is missing");
+        HGOTO_ERROR(H5E_HEAP, H5E_BADVALUE, FAIL, "encoded chunk-local heap-set image is missing");
 
     if (NULL == (copy = H5HG__decode_local_heapset(f, image, image_size)))
-        HGOTO_ERROR(H5E_HEAP, H5E_CANTDECODE, FAIL,
-                    "unable to decode chunk-local heap-set copy");
+        HGOTO_ERROR(H5E_HEAP, H5E_CANTDECODE, FAIL, "unable to decode chunk-local heap-set copy");
 
     *copy_out = copy;
     copy      = NULL;
@@ -3457,8 +3453,7 @@ done:
 
     if (copy)
         if (H5HG__free_local_heapset(copy) < 0)
-            HDONE_ERROR(H5E_HEAP, H5E_CANTFREE, FAIL,
-                        "unable to free incomplete chunk-local heap-set copy");
+            HDONE_ERROR(H5E_HEAP, H5E_CANTFREE, FAIL, "unable to free incomplete chunk-local heap-set copy");
 
     FUNC_LEAVE_NOAPI(ret_value)
 

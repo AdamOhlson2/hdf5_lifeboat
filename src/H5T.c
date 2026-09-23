@@ -4986,7 +4986,7 @@ H5T_get_size(const H5T_t *dt)
  *
  *            Failure:    0, never fails
  *
- * updated: 
+ * updated:
  *         Include the VL representation backend in datatype identity.
  *
  *         Ordinary disk VL and chunk-local VL can have identical
@@ -4996,7 +4996,7 @@ H5T_get_size(const H5T_t *dt)
  *         Conversion paths retain datatype copies, including compound
  *         member types. Treating these backends as equal can therefore
  *         reuse a path whose retained types use the wrong callbacks.
- * 
+ *
  *                                              -- AZO 09/22/26
  *-------------------------------------------------------------------------
  */

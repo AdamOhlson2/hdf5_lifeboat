@@ -5321,8 +5321,8 @@ done:
  * Return:
  *   SUCCEED on success;
  *   FAIL on failure.
- * 
- * 
+ *
+ *
  * Updated:     Use the allocation size reported by the structured-chunk
  *              callbacks as the complete resident size of a decoded chunk,
  *              including any chunk-local variable-length heap storage.
@@ -5690,31 +5690,31 @@ H5SC_read(H5SC_t *cache, H5D_dset_io_info_t *dset_info)
             HGOTO_ERROR(H5E_DATASET, H5E_CANTGET, FAIL, "unable to scatter mem for read chunk (SCC)");
         }
         /*
-        * A clean resident object with no disk representation contains only
-        * read-materialized sparse fill state. It does not represent defined
-        * dataset state, so release it after supplying the requested values.
-        *
-        * Using the resident state directly also cleans up any sparse-read shell
-        * retained by an earlier read request.
-        */
-        if (cached_chunk->chunk_obj && !H5_addr_defined(cached_chunk->disk_addr) && !cached_chunk->dirty_flag) {
+         * A clean resident object with no disk representation contains only
+         * read-materialized sparse fill state. It does not represent defined
+         * dataset state, so release it after supplying the requested values.
+         *
+         * Using the resident state directly also cleans up any sparse-read shell
+         * retained by an earlier read request.
+         */
+        if (cached_chunk->chunk_obj && !H5_addr_defined(cached_chunk->disk_addr) &&
+            !cached_chunk->dirty_flag) {
             herr_t evict_ret;
 
             assert(cached_chunk->chunk_obj == chunk_arr[j]);
             assert(cached_chunk->udata == udata_arr[j]);
 
             if (!dset_info[0].dset->shared->layout.sc_ops->evict)
-                HGOTO_ERROR(H5E_DATASET, H5E_UNSUPPORTED, FAIL, 
+                HGOTO_ERROR(H5E_DATASET, H5E_UNSUPPORTED, FAIL,
                             "layout cannot release transient sparse-read chunk");
 
             evict_ret = dset_info[0].dset->shared->layout.sc_ops->evict(
-                        dset_info[0].dset, cached_chunk->chunk_obj,
-                        cached_chunk->udata);
+                dset_info[0].dset, cached_chunk->chunk_obj, cached_chunk->udata);
 
             /*
-            * The eviction callback has consumed the resident object ownership.
-            * Clear every alias before handling its return value.
-            */
+             * The eviction callback has consumed the resident object ownership.
+             * Clear every alias before handling its return value.
+             */
             cached_chunk->chunk_obj = NULL;
             cached_chunk->udata     = NULL;
             chunk_arr[j]            = NULL;
@@ -5747,7 +5747,6 @@ H5SC_read(H5SC_t *cache, H5D_dset_io_info_t *dset_info)
         }
 
     } /* Chunk Processing Loop End */
-
 
 #if H5SC_DO_SANITY_CHECKS
     if (H5SC__verify_cached_reclaimability(cache) < 0)
@@ -5831,13 +5830,13 @@ done:
  *
  *   H5D_dset_io_info_t *dset_info:
  *     Pointer to the dataset I/O request descriptor to process.
- * 
+ *
  * Updated:
- * 
- *         Updated with VL H5HG integration. Fixed - the callback can 
- *         no longer publish the new chunk and then fail while 
+ *
+ *         Updated with VL H5HG integration. Fixed - the callback can
+ *         no longer publish the new chunk and then fail while
  *         releasing old resources.
- * 
+ *
  *                                      -- AZO    09/22/26
  *
  * Return:
@@ -6191,15 +6190,11 @@ H5SC_write(H5SC_t *cache, H5D_dset_io_info_t *dset_info)
                  */
                 alloc_size_total = chk->cached_chunk_size;
 
-                H5_CHECKED_ASSIGN(nbytes_local, size_t,
-                                  *size[j], hsize_t);
+                H5_CHECKED_ASSIGN(nbytes_local, size_t, *size[j], hsize_t);
 
-                gather_status =
-                    dset_info[0].dset->shared->layout.sc_ops->gather_mem(
-                        &dset_info[0], &my_io_type_info,
-                        gather_mem_space, gather_file_space,
-                        &nbytes_local, size_hint[j], &alloc_size_total,
-                        chunk_arr[j], udata_arr[j]);
+                gather_status = dset_info[0].dset->shared->layout.sc_ops->gather_mem(
+                    &dset_info[0], &my_io_type_info, gather_mem_space, gather_file_space, &nbytes_local,
+                    size_hint[j], &alloc_size_total, chunk_arr[j], udata_arr[j]);
 
                 /*
                  * Reconcile resident bytes before propagating a callback
@@ -6612,7 +6607,7 @@ done:
  *              completes.
  *
  * Return:      SUCCEED/FAIL
- * 
+ *
  * Updated:     Propagate both encoded size and complete resident allocation
  *              through erase_values(). If the chunk survives, reconcile SCC
  *              accounting with the allocation remaining after variable-length
@@ -6863,10 +6858,10 @@ H5SC_erase(H5SC_t *cache, H5D_t *dset, const H5S_t *file_space)
 
             if (H5_addr_defined(old_addr)) {
                 /*
-                * A selection-only resident chunk can have disk_nbytes == 0 while its
-                * encoded chunk remains on disk. Recover the size from the index before
-                * deleting that allocation.
-                */
+                 * A selection-only resident chunk can have disk_nbytes == 0 while its
+                 * encoded chunk remains on disk. Recover the size from the index before
+                 * deleting that allocation.
+                 */
                 if (0 == old_disk_size) {
                     const hsize_t *lookup_scaled[1] = {chk->scaled};
                     haddr_t        indexed_addr     = HADDR_UNDEF;
@@ -6879,9 +6874,10 @@ H5SC_erase(H5SC_t *cache, H5D_t *dset, const H5S_t *file_space)
                         HGOTO_ERROR(H5E_DATASET, H5E_CANTGET, FAIL,
                                     "erase: unable to look up empty chunk's disk size");
 
-                    if ((!H5_addr_defined(indexed_addr)) || (!H5_addr_eq(indexed_addr, old_addr)) || 
+                    if ((!H5_addr_defined(indexed_addr)) || (!H5_addr_eq(indexed_addr, old_addr)) ||
                         (indexed_size == 0))
-                        HGOTO_ERROR(H5E_DATASET, H5E_BADVALUE, FAIL, "erase: indexed chunk address or disk size is inconsistent");
+                        HGOTO_ERROR(H5E_DATASET, H5E_BADVALUE, FAIL,
+                                    "erase: indexed chunk address or disk size is inconsistent");
 
                     old_disk_size = indexed_size;
                 }

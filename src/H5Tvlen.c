@@ -1965,16 +1965,16 @@ H5T_set_vlen_chunk_ctx(const H5T_vlen_chunk_ctx_t *ctx)
  *              heap and move other heap objects.
  *
  * Return:      SUCCEED/FAIL
- * 
+ *
  *                                                 -- AZO   09/15/26
  *-------------------------------------------------------------------------
  */
 herr_t
 H5T_vlen_delete_file_elmt(void *elem, const H5T_t *dt)
 {
-    void   *payload  = NULL;
-    size_t  u;
-    herr_t  ret_value = SUCCEED;
+    void  *payload = NULL;
+    size_t u;
+    herr_t ret_value = SUCCEED;
 
     FUNC_ENTER_NOAPI(FAIL)
 
@@ -1992,7 +1992,8 @@ H5T_vlen_delete_file_elmt(void *elem, const H5T_t *dt)
                 size_t parent_size = dt->shared->parent->shared->size;
 
                 for (u = 0; u < dt->shared->u.array.nelem; u++) {
-                    if (H5T_vlen_delete_file_elmt((uint8_t *)elem + (u * parent_size), dt->shared->parent) < 0)
+                    if (H5T_vlen_delete_file_elmt((uint8_t *)elem + (u * parent_size), dt->shared->parent) <
+                        0)
                         HGOTO_ERROR(H5E_DATATYPE, H5E_CANTREMOVE, FAIL,
                                     "unable to delete VL payload from file-side array element");
                 }
@@ -2001,11 +2002,11 @@ H5T_vlen_delete_file_elmt(void *elem, const H5T_t *dt)
 
         case H5T_COMPOUND:
             for (u = 0; u < dt->shared->u.compnd.nmembs; u++) {
-                const H5T_t *member_type =
-                    dt->shared->u.compnd.memb[u].type;
+                const H5T_t *member_type = dt->shared->u.compnd.memb[u].type;
 
                 if (H5T_IS_COMPOSITE(member_type->shared->type))
-                    if (H5T_vlen_delete_file_elmt((uint8_t *)elem + dt->shared->u.compnd.memb[u].offset, member_type) < 0)
+                    if (H5T_vlen_delete_file_elmt((uint8_t *)elem + dt->shared->u.compnd.memb[u].offset,
+                                                  member_type) < 0)
                         HGOTO_ERROR(H5E_DATATYPE, H5E_CANTREMOVE, FAIL,
                                     "unable to delete VL payload from file-side compound member");
             }
@@ -2013,17 +2014,16 @@ H5T_vlen_delete_file_elmt(void *elem, const H5T_t *dt)
 
         case H5T_VLEN: {
             const H5T_vlen_class_t *cls;
-            size_t                  seq_len     = 0;
+            size_t                  seq_len = 0;
             size_t                  payload_size;
-            bool                    is_null     = false;
+            bool                    is_null = false;
 
             if (H5T_LOC_DISK != dt->shared->u.vlen.loc)
                 HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL,
                             "VL delete helper requires a disk-located datatype");
 
             if (NULL == (cls = dt->shared->u.vlen.cls))
-                HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL,
-                            "file-side VL datatype has no callback class");
+                HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL, "file-side VL datatype has no callback class");
 
             if (!cls->isnull || !cls->del)
                 HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL,
@@ -2046,33 +2046,35 @@ H5T_vlen_delete_file_elmt(void *elem, const H5T_t *dt)
                 size_t parent_size = dt->shared->parent->shared->size;
 
                 if (!cls->getlen || !cls->read)
-                    HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL, "file-side VL callback class cannot read nested values");
+                    HGOTO_ERROR(H5E_DATATYPE, H5E_BADVALUE, FAIL,
+                                "file-side VL callback class cannot read nested values");
 
                 if ((*(cls->getlen))(dt->shared->u.vlen.file, elem, &seq_len) < 0)
-                    HGOTO_ERROR(H5E_DATATYPE, H5E_CANTGET, FAIL, "unable to retrieve nested file-side VL sequence length");
+                    HGOTO_ERROR(H5E_DATATYPE, H5E_CANTGET, FAIL,
+                                "unable to retrieve nested file-side VL sequence length");
 
                 if (parent_size > 0 && seq_len > SIZE_MAX / parent_size)
-                    HGOTO_ERROR(H5E_DATATYPE, H5E_OVERFLOW, FAIL, "nested file-side VL payload size overflows size_t");
+                    HGOTO_ERROR(H5E_DATATYPE, H5E_OVERFLOW, FAIL,
+                                "nested file-side VL payload size overflows size_t");
 
                 payload_size = seq_len * parent_size;
 
                 if (payload_size > 0) {
                     if (NULL == (payload = H5MM_malloc(payload_size)))
-                        HGOTO_ERROR(H5E_RESOURCE, H5E_NOSPACE, FAIL, "unable to allocate nested VL deletion buffer");
+                        HGOTO_ERROR(H5E_RESOURCE, H5E_NOSPACE, FAIL,
+                                    "unable to allocate nested VL deletion buffer");
 
                     /*
                      * Copy the complete containing payload before deleting
                      * children. Heap deletion may compact resident heap data.
                      */
-                    if ((*(cls->read))(dt->shared->u.vlen.file,
-                                       elem, payload, payload_size) < 0)
+                    if ((*(cls->read))(dt->shared->u.vlen.file, elem, payload, payload_size) < 0)
                         HGOTO_ERROR(H5E_DATATYPE, H5E_READERROR, FAIL,
                                     "unable to read nested file-side VL payload");
 
                     for (u = 0; u < seq_len; u++)
-                        if (H5T_vlen_delete_file_elmt(
-                                (uint8_t *)payload + (u * parent_size),
-                                dt->shared->parent) < 0)
+                        if (H5T_vlen_delete_file_elmt((uint8_t *)payload + (u * parent_size),
+                                                      dt->shared->parent) < 0)
                             HGOTO_ERROR(H5E_DATATYPE, H5E_CANTREMOVE, FAIL,
                                         "unable to delete nested file-side VL element");
                 }
@@ -2083,8 +2085,7 @@ H5T_vlen_delete_file_elmt(void *elem, const H5T_t *dt)
              * been deleted.
              */
             if ((*(cls->del))(dt->shared->u.vlen.file, elem) < 0)
-                HGOTO_ERROR(H5E_DATATYPE, H5E_CANTREMOVE, FAIL,
-                            "unable to delete file-side VL payload");
+                HGOTO_ERROR(H5E_DATATYPE, H5E_CANTREMOVE, FAIL, "unable to delete file-side VL payload");
 
             break;
         }
