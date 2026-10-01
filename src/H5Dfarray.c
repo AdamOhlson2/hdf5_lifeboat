@@ -1971,11 +1971,11 @@ H5D__farray_stc_idx_create(const H5D_chk_idx_info_t *idx_info)
      * size (encoded selection + data) make the chunk larger.
      */
     /*
-    * STRUCT_CHUNK_SECTION_COUNT_ASSUMPTION: The current format uses two
-    * sections for fixed-size data and three for data containing VL values.
-    * Revisit this inference if new section kinds, multiple VL sections,
-    * or a dense VL layout are introduced.
-    */
+     * STRUCT_CHUNK_SECTION_COUNT_ASSUMPTION: The current format uses two
+     * sections for fixed-size data and three for data containing VL values.
+     * Revisit this inference if new section kinds, multiple VL sections,
+     * or a dense VL layout are introduced.
+     */
     if (storage->nsects == 3) {
         chunk_size_len = 8;
     }

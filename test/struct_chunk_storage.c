@@ -5709,25 +5709,25 @@ error:
  *              Decode midway, then continue growing using the original IDs.
  *
  * Updated:     Regression coverage for incremental local member allocation.
- * 
+ *
  *                                                  -- AZO  09/24/26
  *-------------------------------------------------------------------------
  */
 static herr_t
 test_local_heapset_growth(hid_t fcpl, hid_t fapl)
 {
-    char filename[FILENAME_BUF_SIZE];
-    hid_t fid = H5I_INVALID_HID;
-    H5VL_object_t *vol_obj = NULL;
-    H5F_t *f = NULL;
+    char                  filename[FILENAME_BUF_SIZE];
+    hid_t                 fid     = H5I_INVALID_HID;
+    H5VL_object_t        *vol_obj = NULL;
+    H5F_t                *f       = NULL;
     H5HG_local_heapset_t *heapset = NULL;
     H5HG_local_heapset_t *decoded = NULL;
-    uint8_t *payload = NULL, *readback = NULL, *image = NULL;
-    uint16_t *slots = NULL, *indices = NULL;
-    size_t *lengths = NULL;
-    size_t capacity = 2 * (H5HG_LOCAL_NORMAL_HEAP_SIZE / H5HG_MINSIZE) + 8;
-    size_t bytes, expected, image_len, i, j, n, tail, old_size, old_nalloc;
-    uint16_t slot, index;
+    uint8_t              *payload = NULL, *readback = NULL, *image = NULL;
+    uint16_t             *slots = NULL, *indices = NULL;
+    size_t               *lengths  = NULL;
+    size_t                capacity = 2 * (H5HG_LOCAL_NORMAL_HEAP_SIZE / H5HG_MINSIZE) + 8;
+    size_t                bytes, expected, image_len, i, j, n, tail, old_size, old_nalloc;
+    uint16_t              slot, index;
 
     TESTING("chunk-local VL incremental member growth and accounting");
     h5_fixname(FILENAME[6], fapl, filename, sizeof filename);
@@ -5737,8 +5737,7 @@ test_local_heapset_growth(hid_t fcpl, hid_t fapl)
         TEST_ERROR;
     if (NULL == (f = (H5F_t *)H5VL_object_data(vol_obj)))
         TEST_ERROR;
-    if (NULL == (payload = H5MM_malloc(H5HG_MINSIZE)) ||
-        NULL == (readback = H5MM_malloc(H5HG_MINSIZE)) ||
+    if (NULL == (payload = H5MM_malloc(H5HG_MINSIZE)) || NULL == (readback = H5MM_malloc(H5HG_MINSIZE)) ||
         NULL == (slots = H5MM_malloc(capacity * sizeof(*slots))) ||
         NULL == (indices = H5MM_malloc(capacity * sizeof(*indices))) ||
         NULL == (lengths = H5MM_malloc(capacity * sizeof(*lengths))))
@@ -5759,8 +5758,8 @@ test_local_heapset_growth(hid_t fcpl, hid_t fapl)
         do {
             if (n >= capacity)
                 TEST_ERROR;
-            lengths[n] = n == 0 ? H5HG_MINSIZE - H5HG_SIZEOF_HDR(f) - H5HG_SIZEOF_OBJHDR(f) - tail
-                                 : H5HG_MINSIZE / 2;
+            lengths[n] =
+                n == 0 ? H5HG_MINSIZE - H5HG_SIZEOF_HDR(f) - H5HG_SIZEOF_OBJHDR(f) - tail : H5HG_MINSIZE / 2;
             memset(payload, (int)(n % 251), lengths[n]);
             old_size = heapset ? heapset->heaps[0]->size : 0;
             if (H5HG__insert_local_heapset(f, &heapset, lengths[n], payload, &slots[n], &indices[n]) < 0)
@@ -5783,7 +5782,7 @@ test_local_heapset_growth(hid_t fcpl, hid_t fapl)
                     TEST_ERROR;
                 heapset = decoded;
                 decoded = NULL;
-                image = H5MM_xfree(image);
+                image   = H5MM_xfree(image);
             }
             expected = sizeof(*heapset) + heapset->nalloc * sizeof(heapset->heaps[0]);
             for (i = 0; i < heapset->nslots; i++) {
@@ -5810,8 +5809,8 @@ test_local_heapset_growth(hid_t fcpl, hid_t fapl)
         /* Remove an interior record; reuse its space without growing the image. */
         old_size = heapset->heaps[0]->size;
         if (H5HG__remove_local_heapset(f, heapset, slots[1], indices[1]) < 0 ||
-            H5HG__insert_local_heapset(f, &heapset, lengths[1], payload, &slot, &index) < 0 ||
-            slot != 0 || heapset->heaps[0]->size != old_size)
+            H5HG__insert_local_heapset(f, &heapset, lengths[1], payload, &slot, &index) < 0 || slot != 0 ||
+            heapset->heaps[0]->size != old_size)
             TEST_ERROR;
         if (H5HG__free_local_heapset(heapset) < 0)
             TEST_ERROR;
@@ -5844,23 +5843,25 @@ test_local_heapset_growth(hid_t fcpl, hid_t fapl)
         TEST_ERROR;
     if (H5HG__free_local_heapset(heapset) < 0)
         TEST_ERROR;
-    heapset = NULL;
-    payload = H5MM_xfree(payload);
+    heapset  = NULL;
+    payload  = H5MM_xfree(payload);
     readback = H5MM_xfree(readback);
-    slots = H5MM_xfree(slots);
-    indices = H5MM_xfree(indices);
-    lengths = H5MM_xfree(lengths);
+    slots    = H5MM_xfree(slots);
+    indices  = H5MM_xfree(indices);
+    lengths  = H5MM_xfree(lengths);
     if (H5Fclose(fid) < 0)
         TEST_ERROR;
     PASSED();
     return SUCCEED;
 
 error:
-    H5E_BEGIN_TRY {
+    H5E_BEGIN_TRY
+    {
         H5HG__free_local_heapset(decoded);
         H5HG__free_local_heapset(heapset);
         H5Fclose(fid);
-    } H5E_END_TRY
+    }
+    H5E_END_TRY
     H5MM_xfree(payload);
     H5MM_xfree(readback);
     H5MM_xfree(image);
@@ -5877,7 +5878,7 @@ error:
  *              heaps remain live. Check stable references and independently
  *              recompute cached allocation after growth, decode, removal,
  *              hole reuse, and removal of the last object.
- * 
+ *
  *                                                     -- AZO  09/29/26
  *-------------------------------------------------------------------------
  */
@@ -5886,9 +5887,9 @@ test_local_heapset_slot_growth(hid_t fcpl, hid_t fapl)
 {
     enum { NOBJECTS = 64 };
     char                  filename[FILENAME_BUF_SIZE];
-    hid_t                 fid = H5I_INVALID_HID;
+    hid_t                 fid     = H5I_INVALID_HID;
     H5VL_object_t        *vol_obj = NULL;
-    H5F_t                *f = NULL;
+    H5F_t                *f       = NULL;
     H5HG_local_heapset_t *heapset = NULL, *decoded = NULL;
     uint8_t              *payload = NULL, *readback = NULL, *image = NULL;
     uint16_t              slots[NOBJECTS], indices[NOBJECTS];
@@ -5900,8 +5901,8 @@ test_local_heapset_slot_growth(hid_t fcpl, hid_t fapl)
     h5_fixname(FILENAME[6], fapl, filename, sizeof filename);
     if ((fid = H5Fcreate(filename, H5F_ACC_TRUNC, fcpl, fapl)) < 0 ||
         NULL == (vol_obj = (H5VL_object_t *)H5I_object_verify(fid, H5I_FILE)) ||
-        NULL == (f = (H5F_t *)H5VL_object_data(vol_obj)) ||
-        NULL == (payload = H5MM_malloc(size)) || NULL == (readback = H5MM_malloc(size)))
+        NULL == (f = (H5F_t *)H5VL_object_data(vol_obj)) || NULL == (payload = H5MM_malloc(size)) ||
+        NULL == (readback = H5MM_malloc(size)))
         TEST_ERROR;
 
     for (i = 0; i < NOBJECTS; i++) {
@@ -5916,7 +5917,7 @@ test_local_heapset_slot_growth(hid_t fcpl, hid_t fapl)
             grew = true;
         }
         previous_capacity = heapset->nalloc;
-        expected = sizeof(*heapset) + heapset->nalloc * sizeof(heapset->heaps[0]);
+        expected          = sizeof(*heapset) + heapset->nalloc * sizeof(heapset->heaps[0]);
         for (j = 0; j < heapset->nslots; j++) {
             H5HG_heap_t *member = heapset->heaps[j];
             if (!member)
@@ -5937,7 +5938,7 @@ test_local_heapset_slot_growth(hid_t fcpl, hid_t fapl)
         TEST_ERROR;
     heapset = decoded;
     decoded = NULL;
-    image = H5MM_xfree(image);
+    image   = H5MM_xfree(image);
 
     if (heapset->nlive != NOBJECTS || heapset->nslots != NOBJECTS)
         TEST_ERROR;
@@ -5952,8 +5953,7 @@ test_local_heapset_slot_growth(hid_t fcpl, hid_t fapl)
         TEST_ERROR;
     for (i = 0; i < NOBJECTS; i++) {
         bytes = size;
-        if (H5HG__read_local_heapset(f, heapset, slots[i], indices[i], readback, &bytes) < 0 ||
-            bytes != size)
+        if (H5HG__read_local_heapset(f, heapset, slots[i], indices[i], readback, &bytes) < 0 || bytes != size)
             TEST_ERROR;
         for (j = 0; j < bytes; j++)
             if (readback[j] != (uint8_t)(i + 1))
@@ -5964,8 +5964,8 @@ test_local_heapset_slot_growth(hid_t fcpl, hid_t fapl)
     if (H5HG__remove_local_heapset(f, heapset, slots[7], indices[7]) < 0)
         TEST_ERROR;
     memset(payload, 201, size);
-    if (H5HG__insert_local_heapset(f, &heapset, size, payload, &slots[7], &indices[7]) < 0 ||
-        slots[7] != 7 || heapset->nslots != NOBJECTS)
+    if (H5HG__insert_local_heapset(f, &heapset, size, payload, &slots[7], &indices[7]) < 0 || slots[7] != 7 ||
+        heapset->nslots != NOBJECTS)
         TEST_ERROR;
     expected = sizeof(*heapset) + heapset->nalloc * sizeof(heapset->heaps[0]);
     for (i = 0; i < heapset->nslots; i++) {
@@ -5987,14 +5987,13 @@ test_local_heapset_slot_growth(hid_t fcpl, hid_t fapl)
         if (H5HG__remove_local_heapset(f, heapset, slots[i], indices[i]) < 0)
             TEST_ERROR;
     expected = sizeof(*heapset) + heapset->nalloc * sizeof(heapset->heaps[0]);
-    if (heapset->nlive != 0 || H5HG__get_local_heapset_alloc_size(heapset, &bytes) < 0 ||
-        bytes != expected)
+    if (heapset->nlive != 0 || H5HG__get_local_heapset_alloc_size(heapset, &bytes) < 0 || bytes != expected)
         TEST_ERROR;
 
     if (H5HG__free_local_heapset(heapset) < 0)
         TEST_ERROR;
-    heapset = NULL;
-    payload = H5MM_xfree(payload);
+    heapset  = NULL;
+    payload  = H5MM_xfree(payload);
     readback = H5MM_xfree(readback);
     if (H5Fclose(fid) < 0)
         TEST_ERROR;
@@ -6002,11 +6001,13 @@ test_local_heapset_slot_growth(hid_t fcpl, hid_t fapl)
     return SUCCEED;
 
 error:
-    H5E_BEGIN_TRY {
+    H5E_BEGIN_TRY
+    {
         H5HG__free_local_heapset(decoded);
         H5HG__free_local_heapset(heapset);
         H5Fclose(fid);
-    } H5E_END_TRY
+    }
+    H5E_END_TRY
     H5MM_xfree(image);
     H5MM_xfree(payload);
     H5MM_xfree(readback);
@@ -6036,7 +6037,7 @@ error:
  *              filtered    Whether to apply deflate to the VL section.
  *
  * Return:      SUCCEED on success; FAIL on error.
- * 
+ *
  *                                                  -- AZO  09/29/26
  *-------------------------------------------------------------------------
  */
@@ -6048,16 +6049,16 @@ test_struct_chunk_vlen_eviction(hid_t fcpl, hid_t base_fapl, bool filtered)
     hid_t                sid = H5I_INVALID_HID, mem_sid = H5I_INVALID_HID;
     hid_t                file_sel = H5I_INVALID_HID, dcpl = H5I_INVALID_HID;
     hid_t                tid = H5I_INVALID_HID, did = H5I_INVALID_HID;
-    H5SC_t              *cache = NULL;
-    H5SC_dset_header_t  *hdr = NULL;
-    H5SC__cache_config_t config = {H5SC__CURR_SCC_VERSION, 1024 * 1024, 2 * 1024 * 1024};
+    H5SC_t              *cache   = NULL;
+    H5SC_dset_header_t  *hdr     = NULL;
+    H5SC__cache_config_t config  = {H5SC__CURR_SCC_VERSION, 1024 * 1024, 2 * 1024 * 1024};
     const hsize_t        dims[1] = {8}, chunk_dims[1] = {2};
     hsize_t              mem_dims[1] = {2}, count[1] = {2};
     hvl_t                wbuf[2], rbuf[8];
     int                  payload[2][64];
     size_t               old_q = 0, old_a = 0, old_min = 0;
     uint64_t             flush_before, evict_before;
-    unsigned int         level = 6;
+    unsigned int         level          = 6;
     bool                 limits_changed = false, reclaim_read = false;
 
     TESTING("structured chunk VL dirty eviction and reload");
@@ -6067,13 +6068,10 @@ test_struct_chunk_vlen_eviction(hid_t fcpl, hid_t base_fapl, bool filtered)
     /* Use a private FAPL so the cache configuration does not affect other
      * tests. Each dataset has eight elements arranged in four chunks.
      */
-    if ((fapl = H5Pcopy(base_fapl)) < 0 ||
-        H5Pset_scc_config(fapl, &config) < 0 ||
+    if ((fapl = H5Pcopy(base_fapl)) < 0 || H5Pset_scc_config(fapl, &config) < 0 ||
         (fid = H5Fcreate(filename, H5F_ACC_TRUNC, fcpl, fapl)) < 0 ||
-        (sid = H5Screate_simple(1, dims, NULL)) < 0 ||
-        (mem_sid = H5Screate_simple(1, mem_dims, NULL)) < 0 ||
-        (file_sel = H5Scopy(sid)) < 0 ||
-        (tid = H5Tvlen_create(H5T_NATIVE_INT)) < 0 ||
+        (sid = H5Screate_simple(1, dims, NULL)) < 0 || (mem_sid = H5Screate_simple(1, mem_dims, NULL)) < 0 ||
+        (file_sel = H5Scopy(sid)) < 0 || (tid = H5Tvlen_create(H5T_NATIVE_INT)) < 0 ||
         (dcpl = H5Pcreate(H5P_DATASET_CREATE)) < 0)
         TEST_ERROR;
 
@@ -6084,12 +6082,10 @@ test_struct_chunk_vlen_eviction(hid_t fcpl, hid_t base_fapl, bool filtered)
     /* Exercise both the unfiltered VL section and its filtered encode/decode
      * path. Only the VL section receives the optional filter.
      */
-    if (filtered &&
-        H5Pset_filter2(dcpl, H5_SECTION_VL, H5Z_FILTER_DEFLATE, 0, 1, &level) < 0)
+    if (filtered && H5Pset_filter2(dcpl, H5_SECTION_VL, H5Z_FILTER_DEFLATE, 0, 1, &level) < 0)
         TEST_ERROR;
 
-    if ((did = H5Dcreate2(fid, "vlen_eviction", tid, sid, H5P_DEFAULT, dcpl,
-                          H5P_DEFAULT)) < 0 ||
+    if ((did = H5Dcreate2(fid, "vlen_eviction", tid, sid, H5P_DEFAULT, dcpl, H5P_DEFAULT)) < 0 ||
         H5SC__get_cache_from_file_id(fid, &cache) < 0 || !cache)
         TEST_ERROR;
 
@@ -6120,9 +6116,8 @@ test_struct_chunk_vlen_eviction(hid_t fcpl, hid_t base_fapl, bool filtered)
              */
             hdr = cache->dset_lru_head_ptr;
 
-            if (!hdr || hdr != cache->dset_lru_tail_ptr ||
-                hdr->chunk_lru_len < 2 || cache->SCC_quiescent_size == 0 ||
-                hdr->curr_dset_size != cache->SCC_quiescent_size)
+            if (!hdr || hdr != cache->dset_lru_tail_ptr || hdr->chunk_lru_len < 2 ||
+                cache->SCC_quiescent_size == 0 || hdr->curr_dset_size != cache->SCC_quiescent_size)
                 TEST_ERROR;
 
             /* Preserve the original limits for both normal and error exits.
@@ -6137,7 +6132,7 @@ test_struct_chunk_vlen_eviction(hid_t fcpl, hid_t base_fapl, bool filtered)
             hdr->min_dset_size         = 0;
             cache->SCC_quiescent_limit = cache->SCC_quiescent_size;
             cache->SCC_active_limit    = cache->SCC_quiescent_size;
-            limits_changed = true;
+            limits_changed             = true;
 
             /* Snapshot the counters after the first two writes. Subsequent
              * increases must therefore come from the cache pressure caused
@@ -6152,8 +6147,7 @@ test_struct_chunk_vlen_eviction(hid_t fcpl, hid_t base_fapl, bool filtered)
      * dataset's resident-size total still agrees with SCC accounting after
      * chunks have been removed and admitted.
      */
-    if (cache->stats.scc_chunk_flush_count <= flush_before ||
-        cache->stats.scc_evictions <= evict_before ||
+    if (cache->stats.scc_chunk_flush_count <= flush_before || cache->stats.scc_evictions <= evict_before ||
         hdr->curr_dset_size != cache->SCC_quiescent_size)
         TEST_ERROR;
 
@@ -6163,7 +6157,7 @@ test_struct_chunk_vlen_eviction(hid_t fcpl, hid_t base_fapl, bool filtered)
     hdr->min_dset_size         = old_min;
     cache->SCC_quiescent_limit = old_q;
     cache->SCC_active_limit    = old_a;
-    limits_changed = false;
+    limits_changed             = false;
 
     /* Reading while the file remains open verifies that values in evicted
      * chunks can be reconstructed and used by the original SCC instance.
@@ -6237,8 +6231,7 @@ test_struct_chunk_vlen_eviction(hid_t fcpl, hid_t base_fapl, bool filtered)
     if (H5Fclose(fid) < 0)
         TEST_ERROR;
     fid = H5I_INVALID_HID;
-    if (H5Pclose(dcpl) < 0 || H5Tclose(tid) < 0 ||
-        H5Sclose(file_sel) < 0 || H5Sclose(mem_sid) < 0 ||
+    if (H5Pclose(dcpl) < 0 || H5Tclose(tid) < 0 || H5Sclose(file_sel) < 0 || H5Sclose(mem_sid) < 0 ||
         H5Sclose(sid) < 0 || H5Pclose(fapl) < 0)
         TEST_ERROR;
 
@@ -6427,7 +6420,7 @@ vl_edge_equal_ints(const hvl_t *actual, const hvl_t *expected)
  *              any remaining allocations without traversing partial records.
  *
  * Return:      SUCCEED/FAIL.
- * 
+ *
  *                                                      -- AZO  09/24/26
  *-------------------------------------------------------------------------
  */
@@ -7253,7 +7246,7 @@ error:
         if (reclaim_read)
             H5Treclaim(tid, sid, H5P_DEFAULT, rbuf);
 
-        if (defined_sid >= 0){
+        if (defined_sid >= 0) {
             H5Sclose(defined_sid);
         }
     }
@@ -7783,13 +7776,12 @@ error:
  *-------------------------------------------------------------------------
  */
 static herr_t
-struct_chunk_vlen_lifecycle_write(hid_t did, hid_t tid, hid_t op_sid, hid_t mem_sid,
-                                  unsigned rank, const hsize_t *dims, size_t element,
-                                  size_t length, uint64_t tag)
+struct_chunk_vlen_lifecycle_write(hid_t did, hid_t tid, hid_t op_sid, hid_t mem_sid, unsigned rank,
+                                  const hsize_t *dims, size_t element, size_t length, uint64_t tag)
 {
     hsize_t start[2] = {0, 0};
     hsize_t count[2] = {1, 1};
-    hvl_t   value   = {0, NULL};
+    hvl_t   value    = {0, NULL};
     size_t  j;
     herr_t  status = FAIL;
 
@@ -7828,11 +7820,10 @@ done:
  *-------------------------------------------------------------------------
  */
 static herr_t
-struct_chunk_vlen_lifecycle_checkpoint(hid_t *fid, hid_t *did, const char *filename,
-                                       hid_t fapl, hid_t tid, hid_t sid, unsigned rank,
-                                       const hsize_t *dims, H5D_chunk_index_t expected_idx,
-                                       const bool *defined, const size_t *lengths,
-                                       const uint64_t *tags, bool read_only)
+struct_chunk_vlen_lifecycle_checkpoint(hid_t *fid, hid_t *did, const char *filename, hid_t fapl, hid_t tid,
+                                       hid_t sid, unsigned rank, const hsize_t *dims,
+                                       H5D_chunk_index_t expected_idx, const bool *defined,
+                                       const size_t *lengths, const uint64_t *tags, bool read_only)
 {
     H5D_chunk_index_t actual_idx;
 
@@ -7934,22 +7925,22 @@ test_struct_chunk_vlen_lifecycle(hid_t fcpl, hid_t fapl, unsigned chk_type, bool
     hid_t             mem_sid = H5I_INVALID_HID;
     hid_t             dcpl    = H5I_INVALID_HID;
     H5D_chunk_index_t expected_idx, actual_idx;
-    hsize_t           dims[2]       = {VL_STRESS_NELMTS, 1};
-    hsize_t           maxdims[2]    = {VL_STRESS_NELMTS, 1};
-    hsize_t           chunk_dims[2] = {16, 1};
-    hsize_t           one[1]        = {1};
-    hsize_t           start[2]      = {0, 0};
-    hsize_t           count[2]      = {1, 1};
+    hsize_t           dims[2]                   = {VL_STRESS_NELMTS, 1};
+    hsize_t           maxdims[2]                = {VL_STRESS_NELMTS, 1};
+    hsize_t           chunk_dims[2]             = {16, 1};
+    hsize_t           one[1]                    = {1};
+    hsize_t           start[2]                  = {0, 0};
+    hsize_t           count[2]                  = {1, 1};
     bool              defined[VL_STRESS_NELMTS] = {false};
     size_t            lengths[VL_STRESS_NELMTS] = {0};
     uint64_t          tags[VL_STRESS_NELMTS]    = {0};
     /* All these coordinates belong to the first chunk in every index case. */
-    const size_t      grown[8] = {1, 3, 5, 7, 9, 11, 13, 15};
-    unsigned int      level = 6;
-    unsigned          rank, cycle;
-    size_t            i = 0, k, length;
-    uint64_t          tag = 0;
-    const char       *phase = "setup";
+    const size_t grown[8] = {1, 3, 5, 7, 9, 11, 13, 15};
+    unsigned int level    = 6;
+    unsigned     rank, cycle;
+    size_t       i     = 0, k, length;
+    uint64_t     tag   = 0;
+    const char  *phase = "setup";
 
     TESTING("structured chunk VL grow/erase/empty/reuse lifecycle");
 
@@ -7970,20 +7961,20 @@ test_struct_chunk_vlen_lifecycle(hid_t fcpl, hid_t fapl, unsigned chk_type, bool
             expected_idx = H5D_CHUNK_IDX_EARRAY;
             break;
         default:
-            rank = 2;
+            rank    = 2;
             dims[0] = dims[1] = 8;
             maxdims[0] = maxdims[1] = H5S_UNLIMITED;
-            chunk_dims[0] = 2;
-            chunk_dims[1] = 8;
-            expected_idx  = H5D_CHUNK_IDX_BT2;
+            chunk_dims[0]           = 2;
+            chunk_dims[1]           = 8;
+            expected_idx            = H5D_CHUNK_IDX_BT2;
             break;
     }
 
     h5_fixname(FILENAME[6], fapl, filename, sizeof(filename));
     if ((fid = H5Fcreate(filename, H5F_ACC_TRUNC, fcpl, fapl)) < 0 ||
-        (sid = H5Screate_simple((int)rank, dims, maxdims)) < 0 ||
-        (op_sid = H5Scopy(sid)) < 0 || (mem_sid = H5Screate_simple(1, one, NULL)) < 0 ||
-        (tid = H5Tvlen_create(H5T_NATIVE_INT)) < 0 || (dcpl = H5Pcreate(H5P_DATASET_CREATE)) < 0)
+        (sid = H5Screate_simple((int)rank, dims, maxdims)) < 0 || (op_sid = H5Scopy(sid)) < 0 ||
+        (mem_sid = H5Screate_simple(1, one, NULL)) < 0 || (tid = H5Tvlen_create(H5T_NATIVE_INT)) < 0 ||
+        (dcpl = H5Pcreate(H5P_DATASET_CREATE)) < 0)
         TEST_ERROR;
     if (H5Pset_layout(dcpl, H5D_STRUCT_CHUNK) < 0 ||
         H5Pset_struct_chunk(dcpl, rank, chunk_dims, H5D_SPARSE_CHUNK) < 0)
@@ -8027,12 +8018,12 @@ test_struct_chunk_vlen_lifecycle(hid_t fcpl, hid_t fapl, unsigned chk_type, bool
         for (unsigned stage = 0; stage < 2; stage++) {
             phase = stage == 0 ? "ordinary member growth" : "oversized member/slot growth";
             for (k = 0; k < 8; k++) {
-                i = grown[k];
-                length = stage == 0
-                             ? (H5HG_LOCAL_NORMAL_HEAP_SIZE / (32 * sizeof(int))) * (k + 1) + 1
-                             : H5HG_LOCAL_NORMAL_HEAP_SIZE / sizeof(int) + 33 + k;
+                i      = grown[k];
+                length = stage == 0 ? (H5HG_LOCAL_NORMAL_HEAP_SIZE / (32 * sizeof(int))) * (k + 1) + 1
+                                    : H5HG_LOCAL_NORMAL_HEAP_SIZE / sizeof(int) + 33 + k;
                 tag++;
-                if (struct_chunk_vlen_lifecycle_write(did, tid, op_sid, mem_sid, rank, dims, i, length, tag) < 0)
+                if (struct_chunk_vlen_lifecycle_write(did, tid, op_sid, mem_sid, rank, dims, i, length, tag) <
+                    0)
                     TEST_ERROR;
                 lengths[i] = length;
                 tags[i]    = tag;
@@ -8049,7 +8040,7 @@ test_struct_chunk_vlen_lifecycle(hid_t fcpl, hid_t fapl, unsigned chk_type, bool
          */
         phase = "smaller replacements";
         for (k = 1; k < 6; k += 2) {
-            i = grown[k];
+            i      = grown[k];
             length = k == 3 ? 0 : 2 + k;
             tag++;
             if (struct_chunk_vlen_lifecycle_write(did, tid, op_sid, mem_sid, rank, dims, i, length, tag) < 0)
@@ -8069,7 +8060,7 @@ test_struct_chunk_vlen_lifecycle(hid_t fcpl, hid_t fapl, unsigned chk_type, bool
          */
         phase = "interior erases";
         for (k = 0; k < 6; k += 2) {
-            i = grown[k];
+            i        = grown[k];
             start[0] = rank == 1 ? (hsize_t)i : (hsize_t)i / dims[1];
             start[1] = rank == 1 ? 0 : (hsize_t)i % dims[1];
             count[0] = count[1] = 1;
@@ -8092,7 +8083,7 @@ test_struct_chunk_vlen_lifecycle(hid_t fcpl, hid_t fapl, unsigned chk_type, bool
          */
         phase = "reinsert after interior erases";
         for (k = 0; k < 6; k += 2) {
-            i = grown[k];
+            i      = grown[k];
             length = H5HG_LOCAL_NORMAL_HEAP_SIZE / sizeof(int) + 65 + k;
             tag++;
             if (struct_chunk_vlen_lifecycle_write(did, tid, op_sid, mem_sid, rank, dims, i, length, tag) < 0)
@@ -8129,7 +8120,7 @@ test_struct_chunk_vlen_lifecycle(hid_t fcpl, hid_t fapl, unsigned chk_type, bool
             TEST_ERROR;
 
         phase = "last payload becomes defined-empty";
-        i = grown[7];
+        i     = grown[7];
         tag++;
         if (struct_chunk_vlen_lifecycle_write(did, tid, op_sid, mem_sid, rank, dims, i, 0, tag) < 0)
             TEST_ERROR;
@@ -8143,10 +8134,10 @@ test_struct_chunk_vlen_lifecycle(hid_t fcpl, hid_t fapl, unsigned chk_type, bool
         /* Phase 8: Erase one complete chunk while leaving other chunks alone.
          * SINGLE has only one chunk, so this erases the complete dataset there.
          */
-        phase = "complete first-chunk erase";
+        phase    = "complete first-chunk erase";
         start[0] = start[1] = 0;
-        count[0] = chunk_dims[0];
-        count[1] = chunk_dims[1];
+        count[0]            = chunk_dims[0];
+        count[1]            = chunk_dims[1];
         if (H5Sselect_hyperslab(op_sid, H5S_SELECT_SET, start, NULL, count, NULL) < 0 ||
             H5Derase(did, op_sid, H5P_DEFAULT) < 0)
             TEST_ERROR;
@@ -8173,7 +8164,7 @@ test_struct_chunk_vlen_lifecycle(hid_t fcpl, hid_t fapl, unsigned chk_type, bool
      */
     phase = "final repopulation";
     for (k = 0; k < VL_STRESS_NELMTS; k++) {
-        i = VL_STRESS_NELMTS - 1 - k;
+        i      = VL_STRESS_NELMTS - 1 - k;
         length = 3 + i % 17;
         tag++;
         if (struct_chunk_vlen_lifecycle_write(did, tid, op_sid, mem_sid, rank, dims, i, length, tag) < 0)
@@ -8185,8 +8176,8 @@ test_struct_chunk_vlen_lifecycle(hid_t fcpl, hid_t fapl, unsigned chk_type, bool
             TEST_ERROR;
     }
     phase = "final read-only reopen";
-    if (struct_chunk_vlen_lifecycle_checkpoint(&fid, &did, filename, fapl, tid, sid, rank, dims,
-                                               expected_idx, defined, lengths, tags, true) < 0)
+    if (struct_chunk_vlen_lifecycle_checkpoint(&fid, &did, filename, fapl, tid, sid, rank, dims, expected_idx,
+                                               defined, lengths, tags, true) < 0)
         TEST_ERROR;
 
     phase = "cleanup";
@@ -8215,8 +8206,8 @@ test_struct_chunk_vlen_lifecycle(hid_t fcpl, hid_t fapl, unsigned chk_type, bool
     return SUCCEED;
 
 error:
-    fprintf(stderr, "VL lifecycle failure: index=%u filtered=%u phase=%s element=%zu tag=%llu\n",
-            chk_type, (unsigned)filtered, phase, i, (unsigned long long)tag);
+    fprintf(stderr, "VL lifecycle failure: index=%u filtered=%u phase=%s element=%zu tag=%llu\n", chk_type,
+            (unsigned)filtered, phase, i, (unsigned long long)tag);
     H5Eprint2(H5E_DEFAULT, stderr);
     H5E_BEGIN_TRY
     {

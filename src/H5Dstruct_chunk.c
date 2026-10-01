@@ -1656,11 +1656,11 @@ H5D__struct_chunk_decode(H5D_t *dset, size_t *nbytes /*in,out*/, size_t *alloc_s
         filtered = true;
 
     /*
-    * STRUCT_CHUNK_SECTION_COUNT_ASSUMPTION: The current format uses two
-    * sections for fixed-size data and three for data containing VL values.
-    * Revisit this inference if new section kinds, multiple VL sections,
-    * or a dense VL layout are introduced.
-    */
+     * STRUCT_CHUNK_SECTION_COUNT_ASSUMPTION: The current format uses two
+     * sections for fixed-size data and three for data containing VL values.
+     * Revisit this inference if new section kinds, multiple VL sections,
+     * or a dense VL layout are introduced.
+     */
     has_vlen_type = (storage->nsects == H5_SECTION_NUM);
 
     /* Validate section boundaries before using them to split the chunk image */
@@ -1889,7 +1889,7 @@ done:
  *       On failure, ownership is not transferred: *chunk continues to point
  *       to the original caller-owned raw buffer. The callback releases only
  *       allocations that it created internally.
- * 
+ *
  *       This callback implements selection-only decoding for a
  *       caller that requests defined-value metadata without the
  *       fixed records or VL payloads. Its presence in the layout
@@ -2341,11 +2341,11 @@ H5D__struct_chunk_encode(H5D_t *dset, hsize_t *write_size /*out*/, hsize_t *writ
     assert(dset);
 
     /*
-    * STRUCT_CHUNK_SECTION_COUNT_ASSUMPTION: The current format uses two
-    * sections for fixed-size data and three for data containing VL values.
-    * Revisit this inference if new section kinds, multiple VL sections,
-    * or a dense VL layout are introduced.
-    */
+     * STRUCT_CHUNK_SECTION_COUNT_ASSUMPTION: The current format uses two
+     * sections for fixed-size data and three for data containing VL values.
+     * Revisit this inference if new section kinds, multiple VL sections,
+     * or a dense VL layout are introduced.
+     */
     if (dset->shared->layout.storage.u.struct_chunk.nsects == 2) {
         has_vlen = false;
     }
@@ -2542,13 +2542,13 @@ H5D__struct_chunk_encode(H5D_t *dset, hsize_t *write_size /*out*/, hsize_t *writ
 
         write_nbytes += vl_nbytes;
     }
-    
+
     /*
-    * Performance note: the encoded sections are assembled into one buffer
-    * here, which copies the selection, fixed records, and VL section.
-    * A future section-level vector write could submit their buffers and
-    * offsets separately, if the SCC write interface supports that form.
-    */
+     * Performance note: the encoded sections are assembled into one buffer
+     * here, which copies the selection, fixed records, and VL section.
+     * A future section-level vector write could submit their buffers and
+     * offsets separately, if the SCC write interface supports that form.
+     */
 
     /*
      * Build the final structured chunk image in a freshly allocated buffer.
@@ -2665,11 +2665,11 @@ H5D__struct_chunk_encode_in_place(H5D_t *dset, size_t *write_size /*out*/, bool 
     assert(dset);
 
     /*
-    * STRUCT_CHUNK_SECTION_COUNT_ASSUMPTION: The current format uses two
-    * sections for fixed-size data and three for data containing VL values.
-    * Revisit this inference if new section kinds, multiple VL sections,
-    * or a dense VL layout are introduced.
-    */
+     * STRUCT_CHUNK_SECTION_COUNT_ASSUMPTION: The current format uses two
+     * sections for fixed-size data and three for data containing VL values.
+     * Revisit this inference if new section kinds, multiple VL sections,
+     * or a dense VL layout are introduced.
+     */
     if (dset->shared->layout.storage.u.struct_chunk.nsects == 2) {
         has_vlen = false;
     }
@@ -2857,12 +2857,12 @@ H5D__struct_chunk_encode_in_place(H5D_t *dset, size_t *write_size /*out*/, bool 
     }
 
     /*
-    * Assemble a contiguous encoded image by growing the fixed-data buffer,
-    * shifting its contents, and copying the selection and VL sections.
-    * These moves and copies remain necessary for the current contiguous
-    * output interface. A future section-level vector-write interface could
-    * submit the separate buffers without assembling this combined image.
-    */
+     * Assemble a contiguous encoded image by growing the fixed-data buffer,
+     * shifting its contents, and copying the selection and VL sections.
+     * These moves and copies remain necessary for the current contiguous
+     * output interface. A future section-level vector-write interface could
+     * submit the separate buffers without assembling this combined image.
+     */
     if (NULL == (chk->data_buf = H5MM_realloc(chk->data_buf, write_nbytes)))
         HGOTO_ERROR(H5E_RESOURCE, H5E_NOSPACE, FAIL, "memory reallocation failed for data chunk");
 
@@ -4253,12 +4253,12 @@ H5D__struct_chunk_gather_mem(H5D_dset_io_info_t *dset_info, H5D_io_type_info_t *
             HGOTO_ERROR(H5E_DATASET, H5E_CANTINIT, FAIL, "unable to prepare chunk-local VL write conversion");
 
         /*
-        * This copies the entire heap set, including payloads that the write
-        * will leave unchanged. It lets conversion modify private storage and
-        * preserves the resident descriptors and heap set if staging fails.
-        * Reducing that copy would require a way to stage only changed payloads
-        * while keeping descriptor references and failure cleanup consistent.
-        */
+         * This copies the entire heap set, including payloads that the write
+         * will leave unchanged. It lets conversion modify private storage and
+         * preserves the resident descriptors and heap set if staging fails.
+         * Reducing that copy would require a way to stage only changed payloads
+         * while keeping descriptor references and failure cleanup consistent.
+         */
         if (H5HG__copy_local_heapset(dset_info->dset->oloc.file, chk->vl_heapset, &staged_heapset) < 0)
             HGOTO_ERROR(H5E_HEAP, H5E_CANTCOPY, FAIL, "unable to copy chunk-local VL heap set");
 
@@ -5322,10 +5322,10 @@ H5D__struct_chunk_erase_values(H5D_t *dset, const H5S_t *selection, size_t *nbyt
         HGOTO_ERROR(H5E_DATASET, H5E_BADVALUE, FAIL, "structured chunk data size exceeds its allocation");
 
     /*
-    * This copies all currently used fixed records even when few values
-    * are erased. It keeps compaction off the resident buffer until the
-    * replacement selection, records, and heap set are ready to commit.
-    */
+     * This copies all currently used fixed records even when few values
+     * are erased. It keeps compaction off the resident buffer until the
+     * replacement selection, records, and heap set are ready to commit.
+     */
     if (chk->data_alloc_size > 0) {
 
         if (NULL == (staged_data_buf = H5MM_malloc(chk->data_alloc_size)))
@@ -5339,11 +5339,11 @@ H5D__struct_chunk_erase_values(H5D_t *dset, const H5S_t *selection, size_t *nbyt
     buf = staged_data_buf;
 
     /*
-    * Copying the complete heap set also preserves payloads belonging to
-    * surviving descriptors during staged deletion. This is a correctness
-    * choice with a cost proportional to the copied heap set; selective
-    * staging is a possible later optimization.
-    */
+     * Copying the complete heap set also preserves payloads belonging to
+     * surviving descriptors during staged deletion. This is a correctness
+     * choice with a cost proportional to the copied heap set; selective
+     * staging is a possible later optimization.
+     */
     if (has_vlen_type) {
         if (H5HG__copy_local_heapset(dset->oloc.file, chk->vl_heapset, &staged_vl_heapset) < 0)
             HGOTO_ERROR(H5E_HEAP, H5E_CANTCOPY, FAIL, "unable to copy chunk-local VL heap set for erase");
@@ -5435,11 +5435,11 @@ H5D__struct_chunk_erase_values(H5D_t *dset, const H5S_t *selection, size_t *nbyt
             if (has_vlen_type) {
 
                 /*
-                * Each removed VL object is passed to the heap backend separately.
-                * H5HG__remove_local() compacts surviving payload bytes after each
-                * removal, so erasing several objects can move heap contents repeatedly.
-                * Batched deletion and compaction are deferred performance work.
-                */
+                 * Each removed VL object is passed to the heap backend separately.
+                 * H5HG__remove_local() compacts surviving payload bytes after each
+                 * removal, so erasing several objects can move heap contents repeatedly.
+                 * Batched deletion and compaction are deferred performance work.
+                 */
                 for (seq_offset = 0; seq_offset < len[curr_seq]; seq_offset += elmt_size) {
 
                     if (H5T_vlen_delete_file_elmt((uint8_t *)buf + src_off + seq_offset, chunk_file_type) < 0)
@@ -5705,7 +5705,7 @@ done:
  * NOTE: chunk is pointer to the chunk intermediate struct
  *
  * NOTE: [udata] not used??
- * 
+ *
  * NOTE:        This callback implements value-only eviction while retaining
  *              defined-value metadata. Registration in the callback table
  *              does not establish that SCC currently invokes this path;

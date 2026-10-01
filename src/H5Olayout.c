@@ -658,15 +658,15 @@ H5O__layout_decode(H5F_t *f, H5O_t H5_ATTR_UNUSED *open_oh, unsigned H5_ATTR_UNU
                     case H5D_CHUNK_IDX_SINGLE: /* Single Chunk Index */
 
                         /*
-                        * STRUCT_CHUNK_SECTION_COUNT_ASSUMPTION: The current format uses two
-                        * sections for fixed-size data and three for data containing VL values.
-                        * Revisit this inference if new section kinds, multiple VL sections,
-                        * or a dense VL layout are introduced.
-                        *
-                        * VL payload size is not bounded by the fixed-record size, so the
-                        * current three-section layout uses an eight-byte encoded-size field.
-                        * This width must match the single-index initialization path.
-                        */
+                         * STRUCT_CHUNK_SECTION_COUNT_ASSUMPTION: The current format uses two
+                         * sections for fixed-size data and three for data containing VL values.
+                         * Revisit this inference if new section kinds, multiple VL sections,
+                         * or a dense VL layout are introduced.
+                         *
+                         * VL payload size is not bounded by the fixed-record size, so the
+                         * current three-section layout uses an eight-byte encoded-size field.
+                         * This width must match the single-index initialization path.
+                         */
                         if (mesg->storage.u.struct_chunk.nsects == H5_SECTION_NUM) {
                             chunk_size_len = 8;
                         }
@@ -1278,9 +1278,9 @@ H5O__layout_encode(H5F_t *f, bool H5_ATTR_UNUSED disable_shared, size_t H5_ATTR_
 
                 case H5D_CHUNK_IDX_SINGLE: /* Single Chunk */
                     /*
-                    * Encode using the width established by single-index initialization.
-                    * H5O__layout_decode() must reconstruct the same width when reopening.
-                    */
+                     * Encode using the width established by single-index initialization.
+                     * H5O__layout_decode() must reconstruct the same width when reopening.
+                     */
                     UINT64ENCODE_VAR(p, mesg->storage.u.struct_chunk.u.single.chunk_size,
                                      mesg->storage.u.struct_chunk.u.single.chunk_size_len);
 
