@@ -49,6 +49,10 @@
 #include "H5VMprivate.h"
 #include "H5Zpkg.h"
 
+#define H5SC_FRIEND
+#include "H5SCpkg.h"
+#include "H5SCprivate.h"
+
 #define H5HG_FRIEND /* Inspect local heap-set invariants in the unit test */
 #include "H5HGpkg.h"
 #include "H5HGprivate.h"
@@ -121,9 +125,13 @@ static herr_t test_struct_chunk_vlen_two_members(hid_t fcpl, hid_t fapl, bool fi
 static herr_t test_struct_chunk_vlen_erase(hid_t fcpl, hid_t fapl, bool filtered);
 static herr_t test_struct_chunk_vlen_empty_section(hid_t fcpl, hid_t fapl, bool filtered);
 static herr_t test_struct_chunk_vlen_type_conversion(hid_t fcpl, hid_t fapl, bool filtered);
+static herr_t test_struct_chunk_vlen_lifecycle(hid_t fcpl, hid_t fapl, unsigned chk_type, bool filtered);
 static herr_t test_struct_chunk_vlen_stress(hid_t fcpl, hid_t fapl, unsigned chk_type, bool filtered,
                                             size_t iterations, uint64_t seed);
 static herr_t test_local_heapset_stable_slots(hid_t fcpl, hid_t fapl);
+static herr_t test_local_heapset_growth(hid_t fcpl, hid_t fapl);
+static herr_t test_local_heapset_slot_growth(hid_t fcpl, hid_t fapl);
+static herr_t test_struct_chunk_vlen_eviction(hid_t fcpl, hid_t base_fapl, bool filtered);
 
 #define VL_STRESS_NELMTS             64
 #define VL_STRESS_MAX_LEN            257
@@ -5692,6 +5700,578 @@ error:
 
 } /* end test_local_heapset_stable_slots() */
 
+/*-------------------------------------------------------------------------
+ * Function:    test_local_heapset_growth
+ *
+ * Purpose:     Verify small initial allocation, relocation from exhausted and
+ *              headerless tails, geometric growth through the normal limit,
+ *              spill into a second member, object-table growth, and accounting.
+ *              Decode midway, then continue growing using the original IDs.
+ *
+ * Updated:     Regression coverage for incremental local member allocation.
+ * 
+ *                                                  -- AZO  09/24/26
+ *-------------------------------------------------------------------------
+ */
+static herr_t
+test_local_heapset_growth(hid_t fcpl, hid_t fapl)
+{
+    char filename[FILENAME_BUF_SIZE];
+    hid_t fid = H5I_INVALID_HID;
+    H5VL_object_t *vol_obj = NULL;
+    H5F_t *f = NULL;
+    H5HG_local_heapset_t *heapset = NULL;
+    H5HG_local_heapset_t *decoded = NULL;
+    uint8_t *payload = NULL, *readback = NULL, *image = NULL;
+    uint16_t *slots = NULL, *indices = NULL;
+    size_t *lengths = NULL;
+    size_t capacity = 2 * (H5HG_LOCAL_NORMAL_HEAP_SIZE / H5HG_MINSIZE) + 8;
+    size_t bytes, expected, image_len, i, j, n, tail, old_size, old_nalloc;
+    uint16_t slot, index;
+
+    TESTING("chunk-local VL incremental member growth and accounting");
+    h5_fixname(FILENAME[6], fapl, filename, sizeof filename);
+    if ((fid = H5Fcreate(filename, H5F_ACC_TRUNC, fcpl, fapl)) < 0)
+        TEST_ERROR;
+    if (NULL == (vol_obj = (H5VL_object_t *)H5I_object_verify(fid, H5I_FILE)))
+        TEST_ERROR;
+    if (NULL == (f = (H5F_t *)H5VL_object_data(vol_obj)))
+        TEST_ERROR;
+    if (NULL == (payload = H5MM_malloc(H5HG_MINSIZE)) ||
+        NULL == (readback = H5MM_malloc(H5HG_MINSIZE)) ||
+        NULL == (slots = H5MM_malloc(capacity * sizeof(*slots))) ||
+        NULL == (indices = H5MM_malloc(capacity * sizeof(*indices))) ||
+        NULL == (lengths = H5MM_malloc(capacity * sizeof(*lengths))))
+        TEST_ERROR;
+
+    /* Tiny payloads must not allocate the normal limit up front. */
+    payload[0] = 42;
+
+    if (H5HG__insert_local_heapset(f, &heapset, 1, payload, &slot, &index) < 0 ||
+        heapset->heaps[slot]->size != H5HG_MINSIZE)
+        TEST_ERROR;
+    if (H5HG__free_local_heapset(heapset) < 0)
+        TEST_ERROR;
+    heapset = NULL;
+
+    for (tail = 0; tail <= 8; tail += 8) {
+        n = 0;
+        do {
+            if (n >= capacity)
+                TEST_ERROR;
+            lengths[n] = n == 0 ? H5HG_MINSIZE - H5HG_SIZEOF_HDR(f) - H5HG_SIZEOF_OBJHDR(f) - tail
+                                 : H5HG_MINSIZE / 2;
+            memset(payload, (int)(n % 251), lengths[n]);
+            old_size = heapset ? heapset->heaps[0]->size : 0;
+            if (H5HG__insert_local_heapset(f, &heapset, lengths[n], payload, &slots[n], &indices[n]) < 0)
+                TEST_ERROR;
+            if (n == 0 && heapset->heaps[0]->obj[0].size != tail)
+                TEST_ERROR;
+            if (n > 0 && slots[n] == 0 && heapset->heaps[0]->size != old_size &&
+                heapset->heaps[0]->size != MIN(old_size * 2, (size_t)H5HG_LOCAL_NORMAL_HEAP_SIZE))
+                TEST_ERROR;
+            if (slots[n] > 1 || heapset->heaps[0]->size > H5HG_LOCAL_NORMAL_HEAP_SIZE)
+                TEST_ERROR;
+            n++;
+
+            /* Continue insertion into a decoded, still-growable member. */
+            if (n == 3) {
+                if (H5HG__encode_local_heapset(f, heapset, &image, &image_len) < 0 ||
+                    NULL == (decoded = H5HG__decode_local_heapset(f, image, image_len)))
+                    TEST_ERROR;
+                if (H5HG__free_local_heapset(heapset) < 0)
+                    TEST_ERROR;
+                heapset = decoded;
+                decoded = NULL;
+                image = H5MM_xfree(image);
+            }
+            expected = sizeof(*heapset) + heapset->nalloc * sizeof(heapset->heaps[0]);
+            for (i = 0; i < heapset->nslots; i++) {
+                H5HG_heap_t *member = heapset->heaps[i];
+                if (member)
+                    expected += sizeof(*member) + member->size + member->nalloc * sizeof(member->obj[0]);
+            }
+            if (H5HG__get_local_heapset_alloc_size(heapset, &bytes) < 0 || bytes != expected)
+                TEST_ERROR;
+        } while (slots[n - 1] == 0);
+
+        if (heapset->heaps[0]->size != H5HG_LOCAL_NORMAL_HEAP_SIZE)
+            TEST_ERROR;
+        /* Verify every old reference after repeated image relocations. */
+        for (i = 0; i < n; i++) {
+            bytes = H5HG_MINSIZE;
+            if (H5HG__read_local_heapset(f, heapset, slots[i], indices[i], readback, &bytes) < 0 ||
+                bytes != lengths[i])
+                TEST_ERROR;
+            for (j = 0; j < bytes; j++)
+                if (readback[j] != (uint8_t)(i % 251))
+                    TEST_ERROR;
+        }
+        /* Remove an interior record; reuse its space without growing the image. */
+        old_size = heapset->heaps[0]->size;
+        if (H5HG__remove_local_heapset(f, heapset, slots[1], indices[1]) < 0 ||
+            H5HG__insert_local_heapset(f, &heapset, lengths[1], payload, &slot, &index) < 0 ||
+            slot != 0 || heapset->heaps[0]->size != old_size)
+            TEST_ERROR;
+        if (H5HG__free_local_heapset(heapset) < 0)
+            TEST_ERROR;
+        heapset = NULL;
+    }
+
+    /* Deleted IDs advance NUSED even when image space is reused. Exercise
+     * table-only growth, checking allocation deltas after every insertion.
+     */
+    if (H5HG__insert_local_heapset(f, &heapset, 0, NULL, &slot, &index) < 0)
+        TEST_ERROR;
+    old_nalloc = heapset->heaps[0]->nalloc;
+
+    for (i = 0; i < old_nalloc + 2; i++) {
+        uint16_t temp_slot, temp_index;
+        if (H5HG__insert_local_heapset(f, &heapset, 0, NULL, &temp_slot, &temp_index) < 0 ||
+            H5HG__remove_local_heapset(f, heapset, temp_slot, temp_index) < 0)
+            TEST_ERROR;
+        expected = sizeof(*heapset) + heapset->nalloc * sizeof(heapset->heaps[0]) +
+                   sizeof(*heapset->heaps[0]) + heapset->heaps[0]->size +
+                   heapset->heaps[0]->nalloc * sizeof(heapset->heaps[0]->obj[0]);
+        if (H5HG__get_local_heapset_alloc_size(heapset, &bytes) < 0 || bytes != expected)
+            TEST_ERROR;
+    }
+
+    if (heapset->heaps[0]->nalloc <= old_nalloc || heapset->heaps[0]->size != H5HG_MINSIZE)
+        TEST_ERROR;
+    if (H5HG__remove_local_heapset(f, heapset, slot, index) < 0 || heapset->nlive != 0 ||
+        heapset->alloc_size != sizeof(*heapset) + heapset->nalloc * sizeof(heapset->heaps[0]))
+        TEST_ERROR;
+    if (H5HG__free_local_heapset(heapset) < 0)
+        TEST_ERROR;
+    heapset = NULL;
+    payload = H5MM_xfree(payload);
+    readback = H5MM_xfree(readback);
+    slots = H5MM_xfree(slots);
+    indices = H5MM_xfree(indices);
+    lengths = H5MM_xfree(lengths);
+    if (H5Fclose(fid) < 0)
+        TEST_ERROR;
+    PASSED();
+    return SUCCEED;
+
+error:
+    H5E_BEGIN_TRY {
+        H5HG__free_local_heapset(decoded);
+        H5HG__free_local_heapset(heapset);
+        H5Fclose(fid);
+    } H5E_END_TRY
+    H5MM_xfree(payload);
+    H5MM_xfree(readback);
+    H5MM_xfree(image);
+    H5MM_xfree(slots);
+    H5MM_xfree(indices);
+    H5MM_xfree(lengths);
+    return FAIL;
+} /* end test_local_heapset_growth() */
+
+/*-------------------------------------------------------------------------
+ * Function:    test_local_heapset_slot_growth
+ *
+ * Purpose:     Force the outer heap-slot array to grow while dedicated member
+ *              heaps remain live. Check stable references and independently
+ *              recompute cached allocation after growth, decode, removal,
+ *              hole reuse, and removal of the last object.
+ * 
+ *                                                     -- AZO  09/29/26
+ *-------------------------------------------------------------------------
+ */
+static herr_t
+test_local_heapset_slot_growth(hid_t fcpl, hid_t fapl)
+{
+    enum { NOBJECTS = 64 };
+    char                  filename[FILENAME_BUF_SIZE];
+    hid_t                 fid = H5I_INVALID_HID;
+    H5VL_object_t        *vol_obj = NULL;
+    H5F_t                *f = NULL;
+    H5HG_local_heapset_t *heapset = NULL, *decoded = NULL;
+    uint8_t              *payload = NULL, *readback = NULL, *image = NULL;
+    uint16_t              slots[NOBJECTS], indices[NOBJECTS];
+    size_t                size = H5HG_LOCAL_NORMAL_HEAP_SIZE;
+    size_t                i, j, expected, bytes, image_len = 0, previous_capacity = 0;
+    bool                  grew = false;
+
+    TESTING("chunk-local VL heap-slot array growth and cleanup");
+    h5_fixname(FILENAME[6], fapl, filename, sizeof filename);
+    if ((fid = H5Fcreate(filename, H5F_ACC_TRUNC, fcpl, fapl)) < 0 ||
+        NULL == (vol_obj = (H5VL_object_t *)H5I_object_verify(fid, H5I_FILE)) ||
+        NULL == (f = (H5F_t *)H5VL_object_data(vol_obj)) ||
+        NULL == (payload = H5MM_malloc(size)) || NULL == (readback = H5MM_malloc(size)))
+        TEST_ERROR;
+
+    for (i = 0; i < NOBJECTS; i++) {
+        memset(payload, (int)(i + 1), size);
+        if (H5HG__insert_local_heapset(f, &heapset, size, payload, &slots[i], &indices[i]) < 0 ||
+            slots[i] != i || !indices[i] || heapset->nlive != i + 1 || heapset->nslots != i + 1 ||
+            heapset->nalloc < heapset->nslots)
+            TEST_ERROR;
+        if (previous_capacity && heapset->nalloc != previous_capacity) {
+            if (heapset->nalloc <= previous_capacity || i + 1 <= previous_capacity)
+                TEST_ERROR;
+            grew = true;
+        }
+        previous_capacity = heapset->nalloc;
+        expected = sizeof(*heapset) + heapset->nalloc * sizeof(heapset->heaps[0]);
+        for (j = 0; j < heapset->nslots; j++) {
+            H5HG_heap_t *member = heapset->heaps[j];
+            if (!member)
+                TEST_ERROR;
+            expected += sizeof(*member) + member->size + member->nalloc * sizeof(member->obj[0]);
+        }
+        if (H5HG__get_local_heapset_alloc_size(heapset, &bytes) < 0 || bytes != expected)
+            TEST_ERROR;
+    }
+    if (!grew)
+        TEST_ERROR;
+
+    /* Decode a populated directory after its backing array has grown. */
+    if (H5HG__encode_local_heapset(f, heapset, &image, &image_len) < 0 || !image || !image_len ||
+        NULL == (decoded = H5HG__decode_local_heapset(f, image, image_len)))
+        TEST_ERROR;
+    if (H5HG__free_local_heapset(heapset) < 0)
+        TEST_ERROR;
+    heapset = decoded;
+    decoded = NULL;
+    image = H5MM_xfree(image);
+
+    if (heapset->nlive != NOBJECTS || heapset->nslots != NOBJECTS)
+        TEST_ERROR;
+    expected = sizeof(*heapset) + heapset->nalloc * sizeof(heapset->heaps[0]);
+    for (i = 0; i < heapset->nslots; i++) {
+        H5HG_heap_t *member = heapset->heaps[i];
+        if (!member)
+            TEST_ERROR;
+        expected += sizeof(*member) + member->size + member->nalloc * sizeof(member->obj[0]);
+    }
+    if (H5HG__get_local_heapset_alloc_size(heapset, &bytes) < 0 || bytes != expected)
+        TEST_ERROR;
+    for (i = 0; i < NOBJECTS; i++) {
+        bytes = size;
+        if (H5HG__read_local_heapset(f, heapset, slots[i], indices[i], readback, &bytes) < 0 ||
+            bytes != size)
+            TEST_ERROR;
+        for (j = 0; j < bytes; j++)
+            if (readback[j] != (uint8_t)(i + 1))
+                TEST_ERROR;
+    }
+
+    /* Reuse an interior slot without moving its neighbors. */
+    if (H5HG__remove_local_heapset(f, heapset, slots[7], indices[7]) < 0)
+        TEST_ERROR;
+    memset(payload, 201, size);
+    if (H5HG__insert_local_heapset(f, &heapset, size, payload, &slots[7], &indices[7]) < 0 ||
+        slots[7] != 7 || heapset->nslots != NOBJECTS)
+        TEST_ERROR;
+    expected = sizeof(*heapset) + heapset->nalloc * sizeof(heapset->heaps[0]);
+    for (i = 0; i < heapset->nslots; i++) {
+        H5HG_heap_t *member = heapset->heaps[i];
+        if (!member)
+            TEST_ERROR;
+        expected += sizeof(*member) + member->size + member->nalloc * sizeof(member->obj[0]);
+    }
+    if (H5HG__get_local_heapset_alloc_size(heapset, &bytes) < 0 || bytes != expected)
+        TEST_ERROR;
+    for (i = 0; i < NOBJECTS; i++) {
+        bytes = size;
+        if (H5HG__read_local_heapset(f, heapset, slots[i], indices[i], readback, &bytes) < 0 ||
+            bytes != size || readback[0] != (uint8_t)(i == 7 ? 201 : i + 1))
+            TEST_ERROR;
+    }
+
+    for (i = 0; i < NOBJECTS; i++)
+        if (H5HG__remove_local_heapset(f, heapset, slots[i], indices[i]) < 0)
+            TEST_ERROR;
+    expected = sizeof(*heapset) + heapset->nalloc * sizeof(heapset->heaps[0]);
+    if (heapset->nlive != 0 || H5HG__get_local_heapset_alloc_size(heapset, &bytes) < 0 ||
+        bytes != expected)
+        TEST_ERROR;
+
+    if (H5HG__free_local_heapset(heapset) < 0)
+        TEST_ERROR;
+    heapset = NULL;
+    payload = H5MM_xfree(payload);
+    readback = H5MM_xfree(readback);
+    if (H5Fclose(fid) < 0)
+        TEST_ERROR;
+    PASSED();
+    return SUCCEED;
+
+error:
+    H5E_BEGIN_TRY {
+        H5HG__free_local_heapset(decoded);
+        H5HG__free_local_heapset(heapset);
+        H5Fclose(fid);
+    } H5E_END_TRY
+    H5MM_xfree(image);
+    H5MM_xfree(payload);
+    H5MM_xfree(readback);
+    return FAIL;
+} /* end test_local_heapset_slot_growth() */
+
+/*-------------------------------------------------------------------------
+ * Function:    test_struct_chunk_vlen_eviction
+ *
+ * Purpose:     Verify that SCC can flush and evict dirty structured chunks
+ *              containing VL data, then reconstruct their values from the
+ *              stored chunk images.
+ *
+ *              The test writes four two-element chunks. After the first
+ *              two chunks are resident, it temporarily lowers SCC's limits
+ *              so subsequent writes must reclaim space. SCC's flush and
+ *              eviction counters establish that the intended path ran;
+ *              closing and reopening the file alone would not prove that.
+ *
+ *              Values are checked both after eviction while the file is
+ *              still open and after a separate close/reopen. The filtered
+ *              argument repeats the test with a filter on the VL section.
+ *
+ * Parameters:  fcpl        File creation property list.
+ *              base_fapl   Base file access property list. The test copies
+ *                          it before changing SCC configuration.
+ *              filtered    Whether to apply deflate to the VL section.
+ *
+ * Return:      SUCCEED on success; FAIL on error.
+ * 
+ *                                                  -- AZO  09/29/26
+ *-------------------------------------------------------------------------
+ */
+static herr_t
+test_struct_chunk_vlen_eviction(hid_t fcpl, hid_t base_fapl, bool filtered)
+{
+    char                 filename[FILENAME_BUF_SIZE];
+    hid_t                fapl = H5I_INVALID_HID, fid = H5I_INVALID_HID;
+    hid_t                sid = H5I_INVALID_HID, mem_sid = H5I_INVALID_HID;
+    hid_t                file_sel = H5I_INVALID_HID, dcpl = H5I_INVALID_HID;
+    hid_t                tid = H5I_INVALID_HID, did = H5I_INVALID_HID;
+    H5SC_t              *cache = NULL;
+    H5SC_dset_header_t  *hdr = NULL;
+    H5SC__cache_config_t config = {H5SC__CURR_SCC_VERSION, 1024 * 1024, 2 * 1024 * 1024};
+    const hsize_t        dims[1] = {8}, chunk_dims[1] = {2};
+    hsize_t              mem_dims[1] = {2}, count[1] = {2};
+    hvl_t                wbuf[2], rbuf[8];
+    int                  payload[2][64];
+    size_t               old_q = 0, old_a = 0, old_min = 0;
+    uint64_t             flush_before, evict_before;
+    unsigned int         level = 6;
+    bool                 limits_changed = false, reclaim_read = false;
+
+    TESTING("structured chunk VL dirty eviction and reload");
+
+    h5_fixname(FILENAME[6], base_fapl, filename, sizeof(filename));
+
+    /* Use a private FAPL so the cache configuration does not affect other
+     * tests. Each dataset has eight elements arranged in four chunks.
+     */
+    if ((fapl = H5Pcopy(base_fapl)) < 0 ||
+        H5Pset_scc_config(fapl, &config) < 0 ||
+        (fid = H5Fcreate(filename, H5F_ACC_TRUNC, fcpl, fapl)) < 0 ||
+        (sid = H5Screate_simple(1, dims, NULL)) < 0 ||
+        (mem_sid = H5Screate_simple(1, mem_dims, NULL)) < 0 ||
+        (file_sel = H5Scopy(sid)) < 0 ||
+        (tid = H5Tvlen_create(H5T_NATIVE_INT)) < 0 ||
+        (dcpl = H5Pcreate(H5P_DATASET_CREATE)) < 0)
+        TEST_ERROR;
+
+    if (H5Pset_layout(dcpl, H5D_STRUCT_CHUNK) < 0 ||
+        H5Pset_struct_chunk(dcpl, 1, chunk_dims, H5D_SPARSE_CHUNK) < 0)
+        TEST_ERROR;
+
+    /* Exercise both the unfiltered VL section and its filtered encode/decode
+     * path. Only the VL section receives the optional filter.
+     */
+    if (filtered &&
+        H5Pset_filter2(dcpl, H5_SECTION_VL, H5Z_FILTER_DEFLATE, 0, 1, &level) < 0)
+        TEST_ERROR;
+
+    if ((did = H5Dcreate2(fid, "vlen_eviction", tid, sid, H5P_DEFAULT, dcpl,
+                          H5P_DEFAULT)) < 0 ||
+        H5SC__get_cache_from_file_id(fid, &cache) < 0 || !cache)
+        TEST_ERROR;
+
+    /* Give every element a distinct length and contents. This detects
+     * descriptor mix-ups as well as corruption of the heap payload itself.
+     * The local payload array stays valid for the duration of each write.
+     */
+    for (unsigned chunk = 0; chunk < 4; chunk++) {
+        hsize_t start[1] = {2 * chunk};
+
+        for (unsigned e = 0; e < 2; e++) {
+            wbuf[e].len = 32 + 2 * chunk + e;
+            wbuf[e].p   = payload[e];
+
+            for (size_t j = 0; j < wbuf[e].len; j++) {
+                payload[e][j] = (int)(1000 * chunk + 100 * e + j);
+            }
+        }
+
+        if (H5Sselect_hyperslab(file_sel, H5S_SELECT_SET, start, NULL, count, NULL) < 0 ||
+            H5Dwrite(did, tid, mem_sid, file_sel, H5P_DEFAULT, wbuf) < 0)
+            TEST_ERROR;
+
+        if (chunk == 1) {
+            /* The first two writes establish dirty resident chunks. Confirm
+             * that this dataset is the cache's sole dataset and that its
+             * resident size agrees with SCC's quiescent-size accounting.
+             */
+            hdr = cache->dset_lru_head_ptr;
+
+            if (!hdr || hdr != cache->dset_lru_tail_ptr ||
+                hdr->chunk_lru_len < 2 || cache->SCC_quiescent_size == 0 ||
+                hdr->curr_dset_size != cache->SCC_quiescent_size)
+                TEST_ERROR;
+
+            /* Preserve the original limits for both normal and error exits.
+             * Removing the dataset's minimum reservation and setting each
+             * cache limit to its current use makes the next admission
+             * reclaim an unpinned dirty chunk.
+             */
+            old_q   = cache->SCC_quiescent_limit;
+            old_a   = cache->SCC_active_limit;
+            old_min = hdr->min_dset_size;
+
+            hdr->min_dset_size         = 0;
+            cache->SCC_quiescent_limit = cache->SCC_quiescent_size;
+            cache->SCC_active_limit    = cache->SCC_quiescent_size;
+            limits_changed = true;
+
+            /* Snapshot the counters after the first two writes. Subsequent
+             * increases must therefore come from the cache pressure caused
+             * by the remaining writes.
+             */
+            flush_before = cache->stats.scc_chunk_flush_count;
+            evict_before = cache->stats.scc_evictions;
+        }
+    } /* end for */
+
+    /* Require an actual dirty flush and eviction. Also confirm that the
+     * dataset's resident-size total still agrees with SCC accounting after
+     * chunks have been removed and admitted.
+     */
+    if (cache->stats.scc_chunk_flush_count <= flush_before ||
+        cache->stats.scc_evictions <= evict_before ||
+        hdr->curr_dset_size != cache->SCC_quiescent_size)
+        TEST_ERROR;
+
+    /* Restore the normal limits before reading the entire dataset: that
+     * read may need to bring all four chunks back into the cache.
+     */
+    hdr->min_dset_size         = old_min;
+    cache->SCC_quiescent_limit = old_q;
+    cache->SCC_active_limit    = old_a;
+    limits_changed = false;
+
+    /* Reading while the file remains open verifies that values in evicted
+     * chunks can be reconstructed and used by the original SCC instance.
+     */
+    memset(rbuf, 0, sizeof(rbuf));
+
+    if (H5Dread(did, tid, H5S_ALL, H5S_ALL, H5P_DEFAULT, rbuf) < 0)
+        TEST_ERROR;
+
+    reclaim_read = true;
+
+    for (unsigned i = 0; i < 8; i++) {
+        if (rbuf[i].len != 32 + i || !rbuf[i].p)
+            TEST_ERROR;
+
+        for (size_t j = 0; j < rbuf[i].len; j++) {
+            if (((int *)rbuf[i].p)[j] != (int)(1000 * (i / 2) + 100 * (i % 2) + j))
+                TEST_ERROR;
+        }
+    }
+
+    if (H5Treclaim(tid, sid, H5P_DEFAULT, rbuf) < 0)
+        TEST_ERROR;
+
+    reclaim_read = false;
+
+    if (H5Dclose(did) < 0)
+        TEST_ERROR;
+
+    did = H5I_INVALID_HID;
+
+    if (H5Fclose(fid) < 0)
+        TEST_ERROR;
+
+    fid   = H5I_INVALID_HID;
+    cache = NULL;
+    hdr   = NULL;
+
+    /* Reopen through a new file/SCC instance. This independently checks
+     * that the flushed chunk images, including their VL heap sections,
+     * persisted correctly.
+     */
+    if ((fid = H5Fopen(filename, H5F_ACC_RDONLY, fapl)) < 0 ||
+        (did = H5Dopen2(fid, "vlen_eviction", H5P_DEFAULT)) < 0)
+        TEST_ERROR;
+
+    memset(rbuf, 0, sizeof(rbuf));
+
+    if (H5Dread(did, tid, H5S_ALL, H5S_ALL, H5P_DEFAULT, rbuf) < 0)
+        TEST_ERROR;
+
+    reclaim_read = true;
+
+    for (unsigned i = 0; i < 8; i++) {
+        if (rbuf[i].len != 32 + i || !rbuf[i].p)
+            TEST_ERROR;
+
+        for (size_t j = 0; j < rbuf[i].len; j++) {
+            if (((int *)rbuf[i].p)[j] != (int)(1000 * (i / 2) + 100 * (i % 2) + j))
+                TEST_ERROR;
+        }
+    }
+
+    if (H5Treclaim(tid, sid, H5P_DEFAULT, rbuf) < 0)
+        TEST_ERROR;
+    reclaim_read = false;
+
+    if (H5Dclose(did) < 0)
+        TEST_ERROR;
+    did = H5I_INVALID_HID;
+    if (H5Fclose(fid) < 0)
+        TEST_ERROR;
+    fid = H5I_INVALID_HID;
+    if (H5Pclose(dcpl) < 0 || H5Tclose(tid) < 0 ||
+        H5Sclose(file_sel) < 0 || H5Sclose(mem_sid) < 0 ||
+        H5Sclose(sid) < 0 || H5Pclose(fapl) < 0)
+        TEST_ERROR;
+
+    PASSED();
+    return SUCCEED;
+
+error:
+    /* Restore limits before closing the file: hdr and cache are only valid
+     * while the original SCC instance remains open. Reclaim a completed VL
+     * read before closing its datatype and dataspace.
+     */
+    if (limits_changed) {
+        hdr->min_dset_size         = old_min;
+        cache->SCC_quiescent_limit = old_q;
+        cache->SCC_active_limit    = old_a;
+    }
+    H5E_BEGIN_TRY
+    {
+        if (reclaim_read)
+            H5Treclaim(tid, sid, H5P_DEFAULT, rbuf);
+        H5Dclose(did);
+        H5Fclose(fid);
+        H5Pclose(dcpl);
+        H5Tclose(tid);
+        H5Sclose(file_sel);
+        H5Sclose(mem_sid);
+        H5Sclose(sid);
+        H5Pclose(fapl);
+    }
+    H5E_END_TRY
+    return FAIL;
+} /* end test_struct_chunk_vlen_eviction() */
+
 /*
  * One record exercises several independent paths through H5T recursion:
  *
@@ -5847,6 +6427,8 @@ vl_edge_equal_ints(const hvl_t *actual, const hvl_t *expected)
  *              any remaining allocations without traversing partial records.
  *
  * Return:      SUCCEED/FAIL.
+ * 
+ *                                                      -- AZO  09/24/26
  *-------------------------------------------------------------------------
  */
 static herr_t
@@ -6671,7 +7253,9 @@ error:
         if (reclaim_read)
             H5Treclaim(tid, sid, H5P_DEFAULT, rbuf);
 
-        H5Sclose(defined_sid);
+        if (defined_sid >= 0){
+            H5Sclose(defined_sid);
+        }
     }
     H5E_END_TRY
 
@@ -7185,6 +7769,468 @@ error:
     H5E_END_TRY
     return FAIL;
 } /* end test_struct_chunk_vlen_stress() */
+
+/*-------------------------------------------------------------------------
+ * Function:    struct_chunk_vlen_lifecycle_write
+ *
+ * Purpose:     Write one value through the public dataset API. Generate each
+ *              item from coordinate/tag/item metadata, then immediately free
+ *              the input payload. Later checks must read HDF5-owned storage;
+ *              they cannot accidentally compare against a retained input.
+ *
+ * Ownership:   IDs are borrowed. The helper owns its temporary input buffer.
+ *              The caller updates the reference model only after success.
+ *-------------------------------------------------------------------------
+ */
+static herr_t
+struct_chunk_vlen_lifecycle_write(hid_t did, hid_t tid, hid_t op_sid, hid_t mem_sid,
+                                  unsigned rank, const hsize_t *dims, size_t element,
+                                  size_t length, uint64_t tag)
+{
+    hsize_t start[2] = {0, 0};
+    hsize_t count[2] = {1, 1};
+    hvl_t   value   = {0, NULL};
+    size_t  j;
+    herr_t  status = FAIL;
+
+    start[0] = rank == 1 ? (hsize_t)element : (hsize_t)element / dims[1];
+    start[1] = rank == 1 ? 0 : (hsize_t)element % dims[1];
+    if (H5Sselect_hyperslab(op_sid, H5S_SELECT_SET, start, NULL, count, NULL) < 0)
+        goto done;
+
+    /* Guard the allocation independently of the lengths used by this test. */
+    if (length > SIZE_MAX / sizeof(int))
+        goto done;
+    if (length > 0) {
+        if (NULL == (value.p = H5MM_malloc(length * sizeof(int))))
+            goto done;
+        for (j = 0; j < length; j++)
+            ((int *)value.p)[j] = struct_chunk_vlen_stress_value(tag, element, j);
+    }
+    value.len = length;
+    status    = H5Dwrite(did, tid, mem_sid, op_sid, H5P_DEFAULT, &value);
+
+done:
+    H5MM_xfree(value.p);
+    return status;
+} /* end struct_chunk_vlen_lifecycle_write() */
+
+/*-------------------------------------------------------------------------
+ * Function:    struct_chunk_vlen_lifecycle_checkpoint
+ *
+ * Purpose:     Check the entire model, close BOTH dataset and file, reopen,
+ *              verify the index type, and check the entire model again.
+ *              A flush alone would leave decoded cache state available and
+ *              could hide an encode/decode or index-persistence defect.
+ *
+ * Ownership:   Replaces the caller's file/dataset IDs, invalidating each ID
+ *              immediately after closing it. Other IDs and arrays are borrowed.
+ *-------------------------------------------------------------------------
+ */
+static herr_t
+struct_chunk_vlen_lifecycle_checkpoint(hid_t *fid, hid_t *did, const char *filename,
+                                       hid_t fapl, hid_t tid, hid_t sid, unsigned rank,
+                                       const hsize_t *dims, H5D_chunk_index_t expected_idx,
+                                       const bool *defined, const size_t *lengths,
+                                       const uint64_t *tags, bool read_only)
+{
+    H5D_chunk_index_t actual_idx;
+
+    if (verify_struct_chunk_vlen_stress(*did, tid, sid, rank, dims, defined, lengths, tags) < 0)
+        return FAIL;
+    if (H5Dclose(*did) < 0)
+        return FAIL;
+    *did = H5I_INVALID_HID;
+    if (H5Fclose(*fid) < 0)
+        return FAIL;
+    *fid = H5I_INVALID_HID;
+    if ((*fid = H5Fopen(filename, read_only ? H5F_ACC_RDONLY : H5F_ACC_RDWR, fapl)) < 0)
+        return FAIL;
+    if ((*did = H5Dopen2(*fid, "vlen_lifecycle", H5P_DEFAULT)) < 0)
+        return FAIL;
+    if (H5D__layout_idx_type_test(*did, &actual_idx) < 0 || actual_idx != expected_idx)
+        return FAIL;
+    return verify_struct_chunk_vlen_stress(*did, tid, sid, rank, dims, defined, lengths, tags);
+} /* end struct_chunk_vlen_lifecycle_checkpoint() */
+
+/*-------------------------------------------------------------------------
+ * Function:    test_struct_chunk_vlen_lifecycle
+ *
+ * Purpose:     Verify that structured chunks preserve VL values and defined
+ *              selections through repeated growth, replacement, erasure,
+ *              empty values, and reuse of previously removed storage.
+ *
+ *              The test uses a dataset of VL integer sequences. CHK_TYPE
+ *              selects the dataset geometry for the single-chunk, fixed
+ *              array, extensible array, or v2 B-tree index. The actual index
+ *              type is checked after creation. When FILTERED is true,
+ *              mandatory deflate filters are applied to the selection,
+ *              fixed-data, and VL sections.
+ *
+ *              Each of two lifecycle passes performs the following steps:
+ *
+ *              1. Populate every coordinate with a small VL value,
+ *                 including some defined values of length zero.
+ *
+ *              2. Replace eight values in the first chunk with increasing
+ *                 ordinary payloads, then with payloads larger than the
+ *                 configured normal member-heap limit. Keeping all eight
+ *                 oversized values live together exercises multiple member
+ *                 heaps and the heap-set slot array.
+ *
+ *              3. Replace selected large values with smaller or empty
+ *                 values, erase other interior positions, and write new
+ *                 oversized values into the erased positions. Verify the
+ *                 untouched values throughout these changes.
+ *
+ *              4. Replace all remaining nonempty values with empty values,
+ *                 keeping one nonempty payload until the final replacement.
+ *                 This checks the transition to a dataset whose values are
+ *                 all still defined but have no sequence elements.
+ *
+ *              5. Erase the complete first chunk, then erase the complete
+ *                 dataset. Reopen the empty dataset before starting the
+ *                 next pass.
+ *
+ *              After both passes, repopulate the dataset in reverse
+ *              coordinate order and perform a final read-only reopen.
+ *              Reverse insertion also exercises insertion before existing
+ *              records in the packed fixed-data buffer.
+ *
+ *              Expected membership, sequence lengths, and payload contents
+ *              are tracked independently of readback. The verifier checks
+ *              the complete dataset after individual changes, and file
+ *              close/reopen checkpoints check persistence at each major
+ *              stage. Defined empty values must remain distinguishable
+ *              from erased, undefined positions.
+ *
+ *              Payload sizes are derived from H5HG_LOCAL_NORMAL_HEAP_SIZE.
+ *              This test checks the observable integration of heap growth
+ *              and removal with descriptors, selections, and dataset I/O.
+ *              It does not inspect private SCC allocation counters, prove
+ *              that a reallocation moved storage, or require retained heap
+ *              capacity to shrink after each removal. Direct heap tests
+ *              check allocation and capacity invariants separately.
+ *
+ *              The write helper releases its application buffers, and the
+ *              verifier reclaims VL read buffers. This function closes the
+ *              identifiers it creates; FCPL and FAPL are borrowed from the
+ *              caller and remain open.
+ *
+ * Return:      SUCCEED on success / FAIL on error
+ *
+ *                                                      -- AZO  09/28/26
+ *-------------------------------------------------------------------------
+ */
+static herr_t
+test_struct_chunk_vlen_lifecycle(hid_t fcpl, hid_t fapl, unsigned chk_type, bool filtered)
+{
+    char              filename[FILENAME_BUF_SIZE];
+    hid_t             fid     = H5I_INVALID_HID;
+    hid_t             did     = H5I_INVALID_HID;
+    hid_t             tid     = H5I_INVALID_HID;
+    hid_t             sid     = H5I_INVALID_HID;
+    hid_t             op_sid  = H5I_INVALID_HID;
+    hid_t             mem_sid = H5I_INVALID_HID;
+    hid_t             dcpl    = H5I_INVALID_HID;
+    H5D_chunk_index_t expected_idx, actual_idx;
+    hsize_t           dims[2]       = {VL_STRESS_NELMTS, 1};
+    hsize_t           maxdims[2]    = {VL_STRESS_NELMTS, 1};
+    hsize_t           chunk_dims[2] = {16, 1};
+    hsize_t           one[1]        = {1};
+    hsize_t           start[2]      = {0, 0};
+    hsize_t           count[2]      = {1, 1};
+    bool              defined[VL_STRESS_NELMTS] = {false};
+    size_t            lengths[VL_STRESS_NELMTS] = {0};
+    uint64_t          tags[VL_STRESS_NELMTS]    = {0};
+    /* All these coordinates belong to the first chunk in every index case. */
+    const size_t      grown[8] = {1, 3, 5, 7, 9, 11, 13, 15};
+    unsigned int      level = 6;
+    unsigned          rank, cycle;
+    size_t            i = 0, k, length;
+    uint64_t          tag = 0;
+    const char       *phase = "setup";
+
+    TESTING("structured chunk VL grow/erase/empty/reuse lifecycle");
+
+    /* Geometry selects the actual index; verify it rather than assume it. */
+    switch (chk_type) {
+        case CHK_SINGLE:
+            rank          = 1;
+            chunk_dims[0] = VL_STRESS_NELMTS;
+            expected_idx  = H5D_CHUNK_IDX_SINGLE;
+            break;
+        case CHK_FA:
+            rank         = 1;
+            expected_idx = H5D_CHUNK_IDX_FARRAY;
+            break;
+        case CHK_EA:
+            rank         = 1;
+            maxdims[0]   = H5S_UNLIMITED;
+            expected_idx = H5D_CHUNK_IDX_EARRAY;
+            break;
+        default:
+            rank = 2;
+            dims[0] = dims[1] = 8;
+            maxdims[0] = maxdims[1] = H5S_UNLIMITED;
+            chunk_dims[0] = 2;
+            chunk_dims[1] = 8;
+            expected_idx  = H5D_CHUNK_IDX_BT2;
+            break;
+    }
+
+    h5_fixname(FILENAME[6], fapl, filename, sizeof(filename));
+    if ((fid = H5Fcreate(filename, H5F_ACC_TRUNC, fcpl, fapl)) < 0 ||
+        (sid = H5Screate_simple((int)rank, dims, maxdims)) < 0 ||
+        (op_sid = H5Scopy(sid)) < 0 || (mem_sid = H5Screate_simple(1, one, NULL)) < 0 ||
+        (tid = H5Tvlen_create(H5T_NATIVE_INT)) < 0 || (dcpl = H5Pcreate(H5P_DATASET_CREATE)) < 0)
+        TEST_ERROR;
+    if (H5Pset_layout(dcpl, H5D_STRUCT_CHUNK) < 0 ||
+        H5Pset_struct_chunk(dcpl, rank, chunk_dims, H5D_SPARSE_CHUNK) < 0)
+        TEST_ERROR;
+
+    /* Mandatory filters prevent a filtered case from silently skipping them. */
+    if (filtered) {
+        if (H5Pset_filter2(dcpl, H5_SECTION_SELECTION, H5Z_FILTER_DEFLATE, 0, 1, &level) < 0 ||
+            H5Pset_filter2(dcpl, H5_SECTION_FIXED, H5Z_FILTER_DEFLATE, 0, 1, &level) < 0 ||
+            H5Pset_filter2(dcpl, H5_SECTION_VL, H5Z_FILTER_DEFLATE, 0, 1, &level) < 0)
+            TEST_ERROR;
+    }
+    if ((did = H5Dcreate2(fid, "vlen_lifecycle", tid, sid, H5P_DEFAULT, dcpl, H5P_DEFAULT)) < 0)
+        TEST_ERROR;
+    if (H5D__layout_idx_type_test(did, &actual_idx) < 0 || actual_idx != expected_idx)
+        TEST_ERROR;
+    if (verify_struct_chunk_vlen_stress(did, tid, sid, rank, dims, defined, lengths, tags) < 0)
+        TEST_ERROR;
+
+    for (cycle = 0; cycle < 2; cycle++) {
+        /* Phase 1: Repopulate a genuinely erased dataset, including empty VL. */
+        phase = "small values";
+        for (i = 0; i < VL_STRESS_NELMTS; i++) {
+            length = i % 7 == 0 ? 0 : 1 + i % 11;
+            tag++;
+            if (struct_chunk_vlen_lifecycle_write(did, tid, op_sid, mem_sid, rank, dims, i, length, tag) < 0)
+                TEST_ERROR;
+            defined[i] = true;
+            lengths[i] = length;
+            tags[i]    = tag;
+            if (verify_struct_chunk_vlen_stress(did, tid, sid, rank, dims, defined, lengths, tags) < 0)
+                TEST_ERROR;
+        }
+        if (struct_chunk_vlen_lifecycle_checkpoint(&fid, &did, filename, fapl, tid, sid, rank, dims,
+                                                   expected_idx, defined, lengths, tags, false) < 0)
+            TEST_ERROR;
+
+        /* Phases 2/3: Grow ordinary members, then force multiple oversized
+         * members to coexist. Other coordinates retain their small values.
+         */
+        for (unsigned stage = 0; stage < 2; stage++) {
+            phase = stage == 0 ? "ordinary member growth" : "oversized member/slot growth";
+            for (k = 0; k < 8; k++) {
+                i = grown[k];
+                length = stage == 0
+                             ? (H5HG_LOCAL_NORMAL_HEAP_SIZE / (32 * sizeof(int))) * (k + 1) + 1
+                             : H5HG_LOCAL_NORMAL_HEAP_SIZE / sizeof(int) + 33 + k;
+                tag++;
+                if (struct_chunk_vlen_lifecycle_write(did, tid, op_sid, mem_sid, rank, dims, i, length, tag) < 0)
+                    TEST_ERROR;
+                lengths[i] = length;
+                tags[i]    = tag;
+                if (verify_struct_chunk_vlen_stress(did, tid, sid, rank, dims, defined, lengths, tags) < 0)
+                    TEST_ERROR;
+            }
+            if (struct_chunk_vlen_lifecycle_checkpoint(&fid, &did, filename, fapl, tid, sid, rank, dims,
+                                                       expected_idx, defined, lengths, tags, false) < 0)
+                TEST_ERROR;
+        }
+
+        /* Phase 4: Shrink interior payloads; the last two large neighbors
+         * stay live to expose descriptor damage and accidental slot renumbering.
+         */
+        phase = "smaller replacements";
+        for (k = 1; k < 6; k += 2) {
+            i = grown[k];
+            length = k == 3 ? 0 : 2 + k;
+            tag++;
+            if (struct_chunk_vlen_lifecycle_write(did, tid, op_sid, mem_sid, rank, dims, i, length, tag) < 0)
+                TEST_ERROR;
+            lengths[i] = length;
+            tags[i]    = tag;
+            if (verify_struct_chunk_vlen_stress(did, tid, sid, rank, dims, defined, lengths, tags) < 0)
+                TEST_ERROR;
+        }
+        if (struct_chunk_vlen_lifecycle_checkpoint(&fid, &did, filename, fapl, tid, sid, rank, dims,
+                                                   expected_idx, defined, lengths, tags, false) < 0)
+            TEST_ERROR;
+
+        /* Phase 5: Erase different interior records, creating undefined holes.
+         * Verification includes large survivors, small neighbors, and the
+         * defined-empty replacement from the preceding phase.
+         */
+        phase = "interior erases";
+        for (k = 0; k < 6; k += 2) {
+            i = grown[k];
+            start[0] = rank == 1 ? (hsize_t)i : (hsize_t)i / dims[1];
+            start[1] = rank == 1 ? 0 : (hsize_t)i % dims[1];
+            count[0] = count[1] = 1;
+            if (H5Sselect_hyperslab(op_sid, H5S_SELECT_SET, start, NULL, count, NULL) < 0 ||
+                H5Derase(did, op_sid, H5P_DEFAULT) < 0)
+                TEST_ERROR;
+            defined[i] = false;
+            lengths[i] = 0;
+            tags[i]    = 0;
+            if (verify_struct_chunk_vlen_stress(did, tid, sid, rank, dims, defined, lengths, tags) < 0)
+                TEST_ERROR;
+        }
+        if (struct_chunk_vlen_lifecycle_checkpoint(&fid, &did, filename, fapl, tid, sid, rank, dims,
+                                                   expected_idx, defined, lengths, tags, false) < 0)
+            TEST_ERROR;
+
+        /* Phase 6: Reuse the erased positions with NEW oversized contents.
+         * Stale descriptors or surviving references damaged by reuse fail
+         * the whole-dataset comparison after each write.
+         */
+        phase = "reinsert after interior erases";
+        for (k = 0; k < 6; k += 2) {
+            i = grown[k];
+            length = H5HG_LOCAL_NORMAL_HEAP_SIZE / sizeof(int) + 65 + k;
+            tag++;
+            if (struct_chunk_vlen_lifecycle_write(did, tid, op_sid, mem_sid, rank, dims, i, length, tag) < 0)
+                TEST_ERROR;
+            defined[i] = true;
+            lengths[i] = length;
+            tags[i]    = tag;
+            if (verify_struct_chunk_vlen_stress(did, tid, sid, rank, dims, defined, lengths, tags) < 0)
+                TEST_ERROR;
+        }
+        if (struct_chunk_vlen_lifecycle_checkpoint(&fid, &did, filename, fapl, tid, sid, rank, dims,
+                                                   expected_idx, defined, lengths, tags, false) < 0)
+            TEST_ERROR;
+
+        /* Phase 7: Empty values individually, retaining position 15 as the
+         * last nonempty payload. This tests cleanup while other descriptors
+         * remain defined, then the exact transition from one payload to none.
+         * Empty values must not disappear from the defined selection.
+         */
+        phase = "empty all but the last payload";
+        for (i = 0; i < VL_STRESS_NELMTS; i++) {
+            if (i == grown[7])
+                continue;
+            tag++;
+            if (struct_chunk_vlen_lifecycle_write(did, tid, op_sid, mem_sid, rank, dims, i, 0, tag) < 0)
+                TEST_ERROR;
+            lengths[i] = 0;
+            tags[i]    = tag;
+            if (verify_struct_chunk_vlen_stress(did, tid, sid, rank, dims, defined, lengths, tags) < 0)
+                TEST_ERROR;
+        }
+        if (struct_chunk_vlen_lifecycle_checkpoint(&fid, &did, filename, fapl, tid, sid, rank, dims,
+                                                   expected_idx, defined, lengths, tags, false) < 0)
+            TEST_ERROR;
+
+        phase = "last payload becomes defined-empty";
+        i = grown[7];
+        tag++;
+        if (struct_chunk_vlen_lifecycle_write(did, tid, op_sid, mem_sid, rank, dims, i, 0, tag) < 0)
+            TEST_ERROR;
+        lengths[i] = 0;
+        tags[i]    = tag;
+        /* Reopening checks the zero-length VL section and its filter handling. */
+        if (struct_chunk_vlen_lifecycle_checkpoint(&fid, &did, filename, fapl, tid, sid, rank, dims,
+                                                   expected_idx, defined, lengths, tags, false) < 0)
+            TEST_ERROR;
+
+        /* Phase 8: Erase one complete chunk while leaving other chunks alone.
+         * SINGLE has only one chunk, so this erases the complete dataset there.
+         */
+        phase = "complete first-chunk erase";
+        start[0] = start[1] = 0;
+        count[0] = chunk_dims[0];
+        count[1] = chunk_dims[1];
+        if (H5Sselect_hyperslab(op_sid, H5S_SELECT_SET, start, NULL, count, NULL) < 0 ||
+            H5Derase(did, op_sid, H5P_DEFAULT) < 0)
+            TEST_ERROR;
+        for (i = 0; i < (chk_type == CHK_SINGLE ? VL_STRESS_NELMTS : 16); i++)
+            defined[i] = false;
+        if (struct_chunk_vlen_lifecycle_checkpoint(&fid, &did, filename, fapl, tid, sid, rank, dims,
+                                                   expected_idx, defined, lengths, tags, false) < 0)
+            TEST_ERROR;
+
+        /* Phase 9: Erase everything, including already undefined coordinates.
+         * Reopen the empty dataset before the next cycle recreates storage.
+         */
+        phase = "complete dataset erase";
+        if (H5Sselect_all(op_sid) < 0 || H5Derase(did, op_sid, H5P_DEFAULT) < 0)
+            TEST_ERROR;
+        memset(defined, 0, sizeof(defined));
+        if (struct_chunk_vlen_lifecycle_checkpoint(&fid, &did, filename, fapl, tid, sid, rank, dims,
+                                                   expected_idx, defined, lengths, tags, false) < 0)
+            TEST_ERROR;
+    }
+
+    /* Finish with nonempty data, not only an empty file. Reverse coordinate
+     * order exercises insertion before existing packed records after deletion.
+     */
+    phase = "final repopulation";
+    for (k = 0; k < VL_STRESS_NELMTS; k++) {
+        i = VL_STRESS_NELMTS - 1 - k;
+        length = 3 + i % 17;
+        tag++;
+        if (struct_chunk_vlen_lifecycle_write(did, tid, op_sid, mem_sid, rank, dims, i, length, tag) < 0)
+            TEST_ERROR;
+        defined[i] = true;
+        lengths[i] = length;
+        tags[i]    = tag;
+        if (verify_struct_chunk_vlen_stress(did, tid, sid, rank, dims, defined, lengths, tags) < 0)
+            TEST_ERROR;
+    }
+    phase = "final read-only reopen";
+    if (struct_chunk_vlen_lifecycle_checkpoint(&fid, &did, filename, fapl, tid, sid, rank, dims,
+                                               expected_idx, defined, lengths, tags, true) < 0)
+        TEST_ERROR;
+
+    phase = "cleanup";
+    if (H5Dclose(did) < 0)
+        TEST_ERROR;
+    did = H5I_INVALID_HID;
+    if (H5Fclose(fid) < 0)
+        TEST_ERROR;
+    fid = H5I_INVALID_HID;
+    if (H5Pclose(dcpl) < 0)
+        TEST_ERROR;
+    dcpl = H5I_INVALID_HID;
+    if (H5Tclose(tid) < 0)
+        TEST_ERROR;
+    tid = H5I_INVALID_HID;
+    if (H5Sclose(mem_sid) < 0)
+        TEST_ERROR;
+    mem_sid = H5I_INVALID_HID;
+    if (H5Sclose(op_sid) < 0)
+        TEST_ERROR;
+    op_sid = H5I_INVALID_HID;
+    if (H5Sclose(sid) < 0)
+        TEST_ERROR;
+    sid = H5I_INVALID_HID;
+    PASSED();
+    return SUCCEED;
+
+error:
+    fprintf(stderr, "VL lifecycle failure: index=%u filtered=%u phase=%s element=%zu tag=%llu\n",
+            chk_type, (unsigned)filtered, phase, i, (unsigned long long)tag);
+    H5Eprint2(H5E_DEFAULT, stderr);
+    H5E_BEGIN_TRY
+    {
+        H5Dclose(did);
+        H5Fclose(fid);
+        H5Pclose(dcpl);
+        H5Tclose(tid);
+        H5Sclose(mem_sid);
+        H5Sclose(op_sid);
+        H5Sclose(sid);
+    }
+    H5E_END_TRY
+    return FAIL;
+} /* end test_struct_chunk_vlen_lifecycle() */
 
 #ifdef TBD
 
@@ -8286,6 +9332,24 @@ main(void)
          * This test does not take a filter argument.
          */
         nerrors += (test_local_heapset_stable_slots(fcpl, vl_fapl) < 0);
+        nerrors += (test_local_heapset_growth(fcpl, vl_fapl) < 0);
+        nerrors += (test_local_heapset_slot_growth(fcpl, vl_fapl) < 0);
+
+        /* Follow complete growth/erase/empty/reuse lifecycles independently
+         * of the optional random-stress iteration count. Each case uses real
+         * dataset APIs and verifies every mutation plus each persisted phase.
+         */
+        for (type = CHK_SINGLE; type <= CHK_EA; type++) {
+            for (use_filter = 0; use_filter < 2; use_filter++) {
+                nerrors += (test_struct_chunk_vlen_lifecycle(fcpl, vl_fapl, type, (bool)use_filter) < 0);
+            }
+        }
+        for (use_filter = 0; use_filter < 2; use_filter++) {
+            nerrors += (test_struct_chunk_vlen_lifecycle(fcpl, vl_fapl, 0, (bool)use_filter) < 0);
+        }
+
+        nerrors += (test_struct_chunk_vlen_eviction(fcpl, vl_fapl, false) < 0);
+        nerrors += (test_struct_chunk_vlen_eviction(fcpl, vl_fapl, true) < 0);
 
         /*
          * Run a deterministic state-machine test across every index and both

@@ -1127,7 +1127,7 @@ test_ooo_indices_local(hid_t fapl)
      * Export the complete local heap image without accessing the opaque
      * H5HG_heap_t representation directly.
      */
-    if (H5HG__encode_local(heap, &image, &image_len) < 0)
+    if (H5HG__encode_local(f, heap, &image, &image_len) < 0)
         goto error;
 
     if (H5HG__free_local(heap) < 0)
@@ -1325,7 +1325,7 @@ test_encode_decode_local(hid_t fapl)
      * Export the complete serialized H5HG collection image. The encoder
      * allocates IMAGE and retuns its exact IMAGE_LEN.
      */
-    if (H5HG__encode_local(heap, &image, &image_len) < 0) {
+    if (H5HG__encode_local(f, heap, &image, &image_len) < 0) {
         H5_FAILED();
         puts("    Unable to encode chunk-local heap");
         nerrors++;
@@ -1439,6 +1439,15 @@ test_encode_decode_local(hid_t fapl)
         nerrors++;
     }
 
+    /* Direct per-heap insertion does not reserve or grow capacity.
+     * Remove a record large enough to hold the new payload.
+     */
+    if (H5HG__remove_local(f, decoded, obj_idx[2], NULL) < 0) {
+        H5_FAILED();
+        puts("    Unable to make room in decoded chunk-local heap");
+        nerrors++;
+        goto error;
+    }
     /*
      * A correctly decoded heap must support normal mutation. Insert a new
      * payload to verify that the decoder restored the free-space record,
@@ -1474,7 +1483,7 @@ test_encode_decode_local(hid_t fapl)
      * created by H5HG__decode_local() remains compatible with the
      * normal local encode path after subsequent mutation.
      */
-    if (H5HG__encode_local(decoded, &image_2, &image_len_2) < 0) {
+    if (H5HG__encode_local(f, decoded, &image_2, &image_len_2) < 0) {
         H5_FAILED();
         puts("    Unable to re-encode modified local heap");
         nerrors++;

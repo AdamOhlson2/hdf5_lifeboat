@@ -78,7 +78,7 @@ H5_DLL herr_t H5HG__get_obj_size_local(H5F_t *f, const H5HG_heap_t *heap, size_t
 H5_DLL herr_t H5HG__free_local(H5HG_heap_t *heap);
 
 /* Chunk-local heap image encoding/decoding */
-H5_DLL herr_t       H5HG__encode_local(const H5HG_heap_t *heap, uint8_t **image_out, size_t *image_len_out);
+H5_DLL herr_t H5HG__encode_local(H5F_t *f, const H5HG_heap_t *heap, uint8_t **image_out, size_t *image_len_out);
 H5_DLL H5HG_heap_t *H5HG__decode_local(H5F_t *f, const void *image, size_t len);
 
 /* Chunk-local heap-set routines */

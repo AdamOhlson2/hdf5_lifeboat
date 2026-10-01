@@ -700,6 +700,12 @@ H5D__single_stc_idx_init(const H5D_chk_idx_info_t *idx_info, const H5S_t H5_ATTR
      * not bounded by the fixed logical chunk size. Use the full uint64_t width
      * for its encoded single-chunk size.
      */
+    /*
+    * STRUCT_CHUNK_SECTION_COUNT_ASSUMPTION: The current format uses two
+    * sections for fixed-size data and three for data containing VL values.
+    * Revisit this inference if new section kinds, multiple VL sections,
+    * or a dense VL layout are introduced.
+    */
     if (idx_info->stc_storage->nsects == H5_SECTION_NUM)
         chunk_size_len = 8;
     else {

@@ -6883,6 +6883,16 @@ H5SC_erase(H5SC_t *cache, H5D_t *dset, const H5S_t *file_space)
                 }
                 if (dset->shared->layout.sc_ops->delete_chunk(dset, chk->scaled, old_addr, old_disk_size) < 0)
                     HGOTO_ERROR(H5E_DATASET, H5E_CANTDELETE, FAIL, "erase: unable to delete empty chunk");
+
+                /*
+                * The single-chunk address is stored in the layout message.
+                * Persist its removal so reopening cannot reference freed storage.
+                */
+                if (dset->shared->layout.u.struct_chunk.idx_type == H5D_CHUNK_IDX_SINGLE) {
+                    if (H5D__mark(dset, H5D_MARK_LAYOUT) < 0)
+                        HGOTO_ERROR(H5E_DATASET, H5E_CANTSET, FAIL,
+                                    "erase: unable to mark layout dirty after chunk deletion");
+                }
             }
 
             if (H5SC__chunk_lru_remove(cache, dset_hdr, chk) < 0)
