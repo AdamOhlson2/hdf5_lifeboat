@@ -26,6 +26,9 @@
 #include "H5Pprivate.h"
 #include "H5VLprivate.h"
 
+#define H5HG_FRIEND /* Inspect resident heap state in the compact-image regression test */
+#include "H5HGpkg.h"
+
 /* Macros for printing error messages in loops.  These print up to
  * GHEAP_REPEATED_ERR_LIM errors, and suppress the rest */
 #define GHEAP_REPEATED_ERR_LIM 20
@@ -1575,6 +1578,222 @@ error:
 }
 
 /*-------------------------------------------------------------------------
+ * Function:    test_local_compact_serialization
+ *
+ * Purpose:     Regression test for omitting trailing unused heap capacity
+ *              from the serialized image without shrinking the resident heap.
+ *              Delete an interior object, check the returned image length
+ *              against both its header and an independently calculated live
+ *              record size, and verify that encoding changes neither resident
+ *              storage nor heap-set allocation accounting. Decode both the
+ *              member and the complete heap set, preserving surviving indices.
+ *              Insert through the heap-set manager to force member growth,
+ *              then check all surviving and newly inserted payloads.
+ *
+ *              Direct member insertion does not grow storage; growth must be
+ *              exercised through H5HG__insert_local_heapset().
+ *
+ * Return:      Success:    0
+ *              Failure:    1
+ *
+ *              Added for the compact-image length regression, 10/01/26.
+ *-------------------------------------------------------------------------
+ */
+static int
+test_local_compact_serialization(hid_t fapl)
+{
+    hid_t                 file = H5I_INVALID_HID;
+    H5F_t                *f = NULL;
+    H5HG_local_heapset_t *heapset = NULL, *decoded = NULL;
+    H5HG_heap_t          *heap = NULL, *member = NULL;
+    uint16_t              slot[3] = {0}, idx[3] = {0}, new_slot = 0, new_idx = 0;
+    uint8_t               payload[512], read_buf[512];
+    uint8_t              *image = NULL, *set_image = NULL, *snapshot = NULL;
+    uint8_t              *large = NULL, *large_read = NULL;
+    H5HG_obj_t           *table_snapshot = NULL;
+    const uint8_t        *p;
+    size_t                image_len = 0, set_len = 0, expected, capacity, free_size;
+    size_t                alloc_size, nalloc, nused, nlive, buf_size, large_size, old_capacity;
+    hsize_t               header_len = 0;
+    bool                  removed_present;
+    size_t                u;
+    char                  filename[1024];
+
+    TESTING("compact local heap serialization, resident preservation and reload growth");
+
+    h5_fixname(FILENAME[0], fapl, filename, sizeof(filename));
+    if ((file = H5Fcreate(filename, H5F_ACC_TRUNC, H5P_DEFAULT, fapl)) < 0)
+        goto error;
+    if (NULL == (f = (H5F_t *)H5VL_object(file)))
+        goto error;
+
+    /* Three distinguishable objects must share one normal member heap. */
+    for (u = 0; u < 3; u++) {
+        memset(payload, (int)(0x31 + u), sizeof(payload));
+        if (H5HG__insert_local_heapset(f, &heapset, sizeof(payload), payload, &slot[u], &idx[u]) < 0)
+            goto error;
+    }
+    if (slot[0] != slot[1] || slot[0] != slot[2]) {
+        puts("    Test setup did not place the objects in one member heap");
+        goto error;
+    }
+    if (H5HG__remove_local_heapset(f, heapset, slot[1], idx[1]) < 0)
+        goto error;
+
+    heap      = heapset->heaps[slot[0]];
+    capacity  = heap->size;
+    free_size = heap->obj[0].size;
+    alloc_size = heapset->alloc_size;
+    nalloc = heap->nalloc;
+    nused  = heap->nused;
+    nlive  = heap->nlive;
+
+    /* Include collection/object headers and required alignment, not spare capacity. */
+    expected = H5HG_SIZEOF_HDR(f) + 2 * (H5HG_SIZEOF_OBJHDR(f) + H5HG_ALIGN(sizeof(payload)));
+    if (free_size == 0 || free_size <= capacity / 2 || expected != capacity - free_size ||
+        heap->obj[0].begin != heap->chunk + expected) {
+        puts("    Test setup lacks substantial trailing free space after interior deletion");
+        goto error;
+    }
+
+    if (NULL == (snapshot = (uint8_t *)malloc(capacity)) ||
+        NULL == (table_snapshot = (H5HG_obj_t *)malloc(nalloc * sizeof(*table_snapshot))))
+        goto error;
+    memcpy(snapshot, heap->chunk, capacity);
+    memcpy(table_snapshot, heap->obj, nalloc * sizeof(*table_snapshot));
+
+    if (H5HG__encode_local(f, heap, &image, &image_len) < 0)
+        goto error;
+    if (!image || image_len < H5HG_SIZEOF_HDR(f))
+        goto error;
+    p = image + H5_SIZEOF_MAGIC + 4;
+    H5F_DECODE_LENGTH(f, p, header_len);
+    if (image_len != expected || header_len != (hsize_t)expected || image_len >= capacity) {
+        puts("    Compact image length, header length and live record size disagree");
+        goto error;
+    }
+
+    /* Exercise the enclosing encoder too: its compact-member check caught the bug. */
+    if (H5HG__encode_local_heapset(f, heapset, &set_image, &set_len) < 0)
+        goto error;
+    if (heap->size != capacity || heap->nalloc != nalloc || heap->nused != nused ||
+        heap->nlive != nlive || heap->obj[0].size != free_size ||
+        heapset->alloc_size != alloc_size || memcmp(snapshot, heap->chunk, capacity) ||
+        memcmp(table_snapshot, heap->obj, nalloc * sizeof(*table_snapshot))) {
+        puts("    Encoding modified resident heap storage or allocation accounting");
+        goto error;
+    }
+
+    if (NULL == (member = H5HG__decode_local(f, image, image_len)) ||
+        NULL == (decoded = H5HG__decode_local_heapset(f, set_image, set_len)))
+        goto error;
+
+    /* Verify both decode entry points at the original object indices. */
+    for (u = 0; u < 3; u++) {
+        if (u == 1)
+            continue;
+        memset(payload, (int)(0x31 + u), sizeof(payload));
+        buf_size = sizeof(read_buf);
+        if (H5HG__read_local(f, member, idx[u], read_buf, &buf_size) < 0 ||
+            buf_size != sizeof(payload) || memcmp(read_buf, payload, sizeof(payload)))
+            goto error;
+        buf_size = sizeof(read_buf);
+        if (H5HG__read_local_heapset(f, decoded, slot[u], idx[u], read_buf, &buf_size) < 0 ||
+            buf_size != sizeof(payload) || memcmp(read_buf, payload, sizeof(payload)))
+            goto error;
+    }
+    H5E_BEGIN_TRY
+    {
+        buf_size = sizeof(read_buf);
+        removed_present = H5HG__read_local(f, member, idx[1], read_buf, &buf_size) >= 0;
+        buf_size = sizeof(read_buf);
+        removed_present |= H5HG__read_local_heapset(f, decoded, slot[1], idx[1], read_buf, &buf_size) >= 0;
+    }
+    H5E_END_TRY
+    if (removed_present) {
+        puts("    Removed interior object reappeared after compact decode");
+        goto error;
+    }
+
+    /* Choose a payload larger than the decoded capacity, forcing actual growth.
+     * Keep it small enough that the manager can extend this normal member.
+     */
+    old_capacity = decoded->heaps[slot[0]]->size;
+    if (old_capacity >= H5HG_LOCAL_NORMAL_HEAP_SIZE / 4)
+        goto error;
+    large_size = old_capacity + 1024;
+    if (NULL == (large = (uint8_t *)malloc(large_size)) ||
+        NULL == (large_read = (uint8_t *)malloc(large_size)))
+        goto error;
+    for (u = 0; u < large_size; u++)
+        large[u] = (uint8_t)(u % 251);
+    if (H5HG__insert_local_heapset(f, &decoded, large_size, large, &new_slot, &new_idx) < 0)
+        goto error;
+    if (new_slot != slot[0] || decoded->heaps[new_slot]->size <= old_capacity) {
+        puts("    Post-decode insertion did not grow the existing member heap");
+        goto error;
+    }
+    buf_size = large_size;
+    if (H5HG__read_local_heapset(f, decoded, new_slot, new_idx, large_read, &buf_size) < 0 ||
+        buf_size != large_size || memcmp(large_read, large, large_size))
+        goto error;
+    for (u = 0; u < 3; u++) {
+        if (u == 1)
+            continue;
+        memset(payload, (int)(0x31 + u), sizeof(payload));
+        buf_size = sizeof(read_buf);
+        if (H5HG__read_local_heapset(f, decoded, slot[u], idx[u], read_buf, &buf_size) < 0 ||
+            buf_size != sizeof(payload) || memcmp(read_buf, payload, sizeof(payload))) {
+            puts("    Growing a decoded member changed a surviving payload");
+            goto error;
+        }
+    }
+
+    if (H5HG__free_local(member) < 0)
+        goto error;
+    member = NULL;
+    if (H5HG__free_local_heapset(decoded) < 0)
+        goto error;
+    decoded = NULL;
+    if (H5HG__free_local_heapset(heapset) < 0)
+        goto error;
+    heapset = NULL;
+    if (H5Fclose(file) < 0)
+        goto error;
+    file = H5I_INVALID_HID;
+    free(snapshot);
+    free(table_snapshot);
+    free(large);
+    free(large_read);
+    image = H5MM_xfree(image);
+    set_image = H5MM_xfree(set_image);
+    PASSED();
+    return 0;
+
+error:
+    H5_FAILED();
+    H5E_BEGIN_TRY
+    {
+        if (member)
+            H5HG__free_local(member);
+        if (decoded)
+            H5HG__free_local_heapset(decoded);
+        if (heapset)
+            H5HG__free_local_heapset(heapset);
+        if (file >= 0)
+            H5Fclose(file);
+    }
+    H5E_END_TRY
+    free(snapshot);
+    free(table_snapshot);
+    free(large);
+    free(large_read);
+    image = H5MM_xfree(image);
+    set_image = H5MM_xfree(set_image);
+    return 1;
+} /* end test_local_compact_serialization() */
+
+/*-------------------------------------------------------------------------
  * Function:    test_heapset_basic
  *
  * Purpose:     Tests basic chunk-local heap-set insertion, lookup, removal,
@@ -2502,6 +2721,7 @@ main(void)
     nerrors += test_4_local(fapl_id);
     nerrors += test_ooo_indices_local(fapl_id);
     nerrors += test_encode_decode_local(fapl_id);
+    nerrors += test_local_compact_serialization(fapl_id);
 
     nerrors += test_heapset_basic(fapl_id);
     nerrors += test_heapset_multiple_heaps(fapl_id);
