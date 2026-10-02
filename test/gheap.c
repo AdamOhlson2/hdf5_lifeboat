@@ -1602,8 +1602,8 @@ error:
 static int
 test_local_compact_serialization(hid_t fapl)
 {
-    hid_t                 file = H5I_INVALID_HID;
-    H5F_t                *f = NULL;
+    hid_t                 file    = H5I_INVALID_HID;
+    H5F_t                *f       = NULL;
     H5HG_local_heapset_t *heapset = NULL, *decoded = NULL;
     H5HG_heap_t          *heap = NULL, *member = NULL;
     uint16_t              slot[3] = {0}, idx[3] = {0}, new_slot = 0, new_idx = 0;
@@ -1640,13 +1640,13 @@ test_local_compact_serialization(hid_t fapl)
     if (H5HG__remove_local_heapset(f, heapset, slot[1], idx[1]) < 0)
         goto error;
 
-    heap      = heapset->heaps[slot[0]];
-    capacity  = heap->size;
-    free_size = heap->obj[0].size;
+    heap       = heapset->heaps[slot[0]];
+    capacity   = heap->size;
+    free_size  = heap->obj[0].size;
     alloc_size = heapset->alloc_size;
-    nalloc = heap->nalloc;
-    nused  = heap->nused;
-    nlive  = heap->nlive;
+    nalloc     = heap->nalloc;
+    nused      = heap->nused;
+    nlive      = heap->nlive;
 
     /* Include collection/object headers and required alignment, not spare capacity. */
     expected = H5HG_SIZEOF_HDR(f) + 2 * (H5HG_SIZEOF_OBJHDR(f) + H5HG_ALIGN(sizeof(payload)));
@@ -1676,9 +1676,9 @@ test_local_compact_serialization(hid_t fapl)
     /* Exercise the enclosing encoder too: its compact-member check caught the bug. */
     if (H5HG__encode_local_heapset(f, heapset, &set_image, &set_len) < 0)
         goto error;
-    if (heap->size != capacity || heap->nalloc != nalloc || heap->nused != nused ||
-        heap->nlive != nlive || heap->obj[0].size != free_size ||
-        heapset->alloc_size != alloc_size || memcmp(snapshot, heap->chunk, capacity) ||
+    if (heap->size != capacity || heap->nalloc != nalloc || heap->nused != nused || heap->nlive != nlive ||
+        heap->obj[0].size != free_size || heapset->alloc_size != alloc_size ||
+        memcmp(snapshot, heap->chunk, capacity) ||
         memcmp(table_snapshot, heap->obj, nalloc * sizeof(*table_snapshot))) {
         puts("    Encoding modified resident heap storage or allocation accounting");
         goto error;
@@ -1694,8 +1694,8 @@ test_local_compact_serialization(hid_t fapl)
             continue;
         memset(payload, (int)(0x31 + u), sizeof(payload));
         buf_size = sizeof(read_buf);
-        if (H5HG__read_local(f, member, idx[u], read_buf, &buf_size) < 0 ||
-            buf_size != sizeof(payload) || memcmp(read_buf, payload, sizeof(payload)))
+        if (H5HG__read_local(f, member, idx[u], read_buf, &buf_size) < 0 || buf_size != sizeof(payload) ||
+            memcmp(read_buf, payload, sizeof(payload)))
             goto error;
         buf_size = sizeof(read_buf);
         if (H5HG__read_local_heapset(f, decoded, slot[u], idx[u], read_buf, &buf_size) < 0 ||
@@ -1704,9 +1704,9 @@ test_local_compact_serialization(hid_t fapl)
     }
     H5E_BEGIN_TRY
     {
-        buf_size = sizeof(read_buf);
+        buf_size        = sizeof(read_buf);
         removed_present = H5HG__read_local(f, member, idx[1], read_buf, &buf_size) >= 0;
-        buf_size = sizeof(read_buf);
+        buf_size        = sizeof(read_buf);
         removed_present |= H5HG__read_local_heapset(f, decoded, slot[1], idx[1], read_buf, &buf_size) >= 0;
     }
     H5E_END_TRY
@@ -1765,7 +1765,7 @@ test_local_compact_serialization(hid_t fapl)
     free(table_snapshot);
     free(large);
     free(large_read);
-    image = H5MM_xfree(image);
+    image     = H5MM_xfree(image);
     set_image = H5MM_xfree(set_image);
     PASSED();
     return 0;
@@ -1788,7 +1788,7 @@ error:
     free(table_snapshot);
     free(large);
     free(large_read);
-    image = H5MM_xfree(image);
+    image     = H5MM_xfree(image);
     set_image = H5MM_xfree(set_image);
     return 1;
 } /* end test_local_compact_serialization() */
