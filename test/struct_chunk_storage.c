@@ -3026,7 +3026,7 @@ error:
  *              chunks, reopens it, checks the index and each decoded integer, and
  *              reclaims H5Dread allocations. The second pass replaces existing heap
  *              objects.
- * 
+ *
  * Coverage:    Emulates dense VL chunks through the sparse structured layout:
  *              dataset dimensions are exact multiples of chunk dimensions,
  *              and every position is written. Checks complete replacement
@@ -3301,22 +3301,22 @@ test_struct_chunk_vlen_partial(hid_t fcpl, hid_t fapl, bool filtered)
     hid_t        did           = H5I_INVALID_HID; /* Dataset ID */
     hid_t        tid           = H5I_INVALID_HID; /* VL integer datatype ID */
     hid_t        defined_sid   = H5I_INVALID_HID;
-    hsize_t      dims[1]       = {8};             /* Eight dataset positions */
-    hsize_t      chunk_dims[1] = {4};             /* Four positions per chunk */
-    hsize_t      mem_dims[1]   = {2};             /* Two values supplied by a partial write */
-    hsize_t      start[1]      = {1};             /* First selected dataset position */
-    hsize_t      stride[1]     = {5};             /* Distance from position 1 to position 6 */
-    hsize_t      count[1]      = {2};             /* Number of selected positions */
-    hsize_t      block[1]      = {1};             /* One element at each selected position */
-    unsigned int level         = 6;               /* Optional VL-section deflate level */
-    int          first[3]      = {11, 12, 13};    /* Initial payload at position 1 */
-    int          second[2]     = {61, 62};        /* Initial payload at position 6 */
-    int          replacement   = 99;              /* Replacement payload at position 1 */
-    hvl_t        wbuf[2];                         /* Values supplied to a partial write */
-    hvl_t        rbuf[8];                         /* Values returned by the full read */
-    unsigned     pass;                            /* Initial or replacement verification pass */
-    unsigned     i;                               /* Dataset position being checked */
-    bool         reclaim_read = false;            /* Whether rbuf owns VL memory to reclaim */
+    hsize_t      dims[1]       = {8};          /* Eight dataset positions */
+    hsize_t      chunk_dims[1] = {4};          /* Four positions per chunk */
+    hsize_t      mem_dims[1]   = {2};          /* Two values supplied by a partial write */
+    hsize_t      start[1]      = {1};          /* First selected dataset position */
+    hsize_t      stride[1]     = {5};          /* Distance from position 1 to position 6 */
+    hsize_t      count[1]      = {2};          /* Number of selected positions */
+    hsize_t      block[1]      = {1};          /* One element at each selected position */
+    unsigned int level         = 6;            /* Optional VL-section deflate level */
+    int          first[3]      = {11, 12, 13}; /* Initial payload at position 1 */
+    int          second[2]     = {61, 62};     /* Initial payload at position 6 */
+    int          replacement   = 99;           /* Replacement payload at position 1 */
+    hvl_t        wbuf[2];                      /* Values supplied to a partial write */
+    hvl_t        rbuf[8];                      /* Values returned by the full read */
+    unsigned     pass;                         /* Initial or replacement verification pass */
+    unsigned     i;                            /* Dataset position being checked */
+    bool         reclaim_read = false;         /* Whether rbuf owns VL memory to reclaim */
 
     /* Announce this case through the HDF5 test harness. */
     TESTING("structured chunk sparse VL writes and replacement");
@@ -5928,10 +5928,9 @@ test_local_heapset_slot_growth(hid_t fcpl, hid_t fapl)
                 TEST_ERROR;
         }
         else {
-            size_t expected_capacity =
-                previous_capacity > H5HG_LOCAL_MAX_HEAP_SLOTS / 2
-                    ? H5HG_LOCAL_MAX_HEAP_SLOTS
-                    : previous_capacity * 2;
+            size_t expected_capacity = previous_capacity > H5HG_LOCAL_MAX_HEAP_SLOTS / 2
+                                           ? H5HG_LOCAL_MAX_HEAP_SLOTS
+                                           : previous_capacity * 2;
 
             if (heapset->nalloc != expected_capacity)
                 TEST_ERROR;
@@ -5940,7 +5939,7 @@ test_local_heapset_slot_growth(hid_t fcpl, hid_t fapl)
 
         previous_capacity = heapset->nalloc;
 
-        expected          = sizeof(*heapset) + heapset->nalloc * sizeof(heapset->heaps[0]);
+        expected = sizeof(*heapset) + heapset->nalloc * sizeof(heapset->heaps[0]);
 
         for (j = 0; j < heapset->nslots; j++) {
 
@@ -5997,7 +5996,6 @@ test_local_heapset_slot_growth(hid_t fcpl, hid_t fapl)
             if (readback[j] != (uint8_t)(i + 1))
                 TEST_ERROR;
         }
-
     }
 
     /* Reuse an interior slot without moving its neighbors. */
@@ -6027,15 +6025,13 @@ test_local_heapset_slot_growth(hid_t fcpl, hid_t fapl)
         uint8_t expected_byte = (uint8_t)(i == 7 ? 201 : i + 1);
 
         bytes = size;
-        if (H5HG__read_local_heapset(f, heapset, slots[i], indices[i], readback, &bytes) < 0 ||
-            bytes != size)
+        if (H5HG__read_local_heapset(f, heapset, slots[i], indices[i], readback, &bytes) < 0 || bytes != size)
             TEST_ERROR;
 
         for (j = 0; j < bytes; j++) {
             if (readback[j] != expected_byte)
                 TEST_ERROR;
         }
-
     }
 
     for (i = 0; i < NOBJECTS; i++) {
@@ -6134,7 +6130,7 @@ test_struct_chunk_vlen_eviction(hid_t fcpl, hid_t base_fapl, bool filtered)
         (file_sel = H5Scopy(sid)) < 0 || (tid = H5Tvlen_create(H5T_NATIVE_INT)) < 0 ||
         (dcpl = H5Pcreate(H5P_DATASET_CREATE)) < 0)
         TEST_ERROR;
-    
+
     /* Set the chunk shape and sparse storage policy. */
     if (H5Pset_struct_chunk(dcpl, 1, chunk_dims, H5D_SPARSE_CHUNK) < 0)
         TEST_ERROR;
@@ -7967,7 +7963,7 @@ struct_chunk_vlen_lifecycle_checkpoint(hid_t *fid, hid_t *did, const char *filen
  *              verifier reclaims VL read buffers. This function closes the
  *              identifiers it creates; FCPL and FAPL are borrowed from the
  *              caller and remain open.
- * 
+ *
  * Coverage:    Also tests dense emulation through the sparse layout.
  *              Completing population defines every chunk position;
  *              the verifier checks exact membership and VL contents,
