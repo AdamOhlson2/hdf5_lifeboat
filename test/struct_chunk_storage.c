@@ -3026,6 +3026,13 @@ error:
  *              chunks, reopens it, checks the index and each decoded integer, and
  *              reclaims H5Dread allocations. The second pass replaces existing heap
  *              objects.
+ * 
+ * Coverage:    Emulates dense VL chunks through the sparse structured layout:
+ *              dataset dimensions are exact multiples of chunk dimensions,
+ *              and every position is written. Checks complete replacement
+ *              and readback after reopening across all four indexes.
+ *              Does not assert the internal selection encoding.
+ *
  *
  * Parameters:  fcpl supplies file creation settings; fapl supplies file access
  *              settings. chk_type selects the chunk index; filtered enables an optional
@@ -3121,9 +3128,6 @@ test_struct_chunk_vlen(hid_t fcpl, hid_t fapl, unsigned chk_type, bool filtered)
     /* Start a dataset creation property list for layout and filters. */
     if ((dcpl = H5Pcreate(H5P_DATASET_CREATE)) < 0)
         TEST_ERROR;
-    /* Select the structured chunk layout. */
-    if (H5Pset_layout(dcpl, H5D_STRUCT_CHUNK) < 0)
-        TEST_ERROR;
     /* Set the chunk shape and sparse storage policy. */
     if (H5Pset_struct_chunk(dcpl, rank, chunk_dims, H5D_SPARSE_CHUNK) < 0)
         TEST_ERROR;
@@ -3162,7 +3166,9 @@ test_struct_chunk_vlen(hid_t fcpl, hid_t fapl, unsigned chk_type, bool filtered)
             }
         }
 
-        /* Write the current state; HDF5 converts VL descriptors into chunk-local payloads. */
+        /* Dense emulation: this full-dataset write defines every position
+         * in every chunk. Pass 1 replaces all previously defined values.
+         */
         if (H5Dwrite(did, tid, H5S_ALL, H5S_ALL, H5P_DEFAULT, wbuf) < 0)
             TEST_ERROR;
 
@@ -3294,6 +3300,7 @@ test_struct_chunk_vlen_partial(hid_t fcpl, hid_t fapl, bool filtered)
     hid_t        dcpl          = H5I_INVALID_HID; /* Dataset creation property list ID */
     hid_t        did           = H5I_INVALID_HID; /* Dataset ID */
     hid_t        tid           = H5I_INVALID_HID; /* VL integer datatype ID */
+    hid_t        defined_sid   = H5I_INVALID_HID;
     hsize_t      dims[1]       = {8};             /* Eight dataset positions */
     hsize_t      chunk_dims[1] = {4};             /* Four positions per chunk */
     hsize_t      mem_dims[1]   = {2};             /* Two values supplied by a partial write */
@@ -3334,9 +3341,6 @@ test_struct_chunk_vlen_partial(hid_t fcpl, hid_t fapl, bool filtered)
         TEST_ERROR;
     /* Start a dataset creation property list for layout and filters. */
     if ((dcpl = H5Pcreate(H5P_DATASET_CREATE)) < 0)
-        TEST_ERROR;
-    /* Select the structured chunk layout. */
-    if (H5Pset_layout(dcpl, H5D_STRUCT_CHUNK) < 0)
         TEST_ERROR;
     /* Set the chunk shape and sparse storage policy. */
     if (H5Pset_struct_chunk(dcpl, 1, chunk_dims, H5D_SPARSE_CHUNK) < 0)
@@ -3402,6 +3406,32 @@ test_struct_chunk_vlen_partial(hid_t fcpl, hid_t fapl, bool filtered)
         /* Open the same dataset for the persisted-data check. */
         if ((did = H5Dopen2(fid, "partial_vlen", H5P_DEFAULT)) < 0)
             TEST_ERROR;
+
+        /* Positions 1 and 6 remain defined in both passes.
+         * In pass 1, position 6 is defined-empty, not undefined.
+         */
+        if ((defined_sid = H5Dget_defined(did, H5S_ALL, H5P_DEFAULT)) < 0)
+            TEST_ERROR;
+
+        if (H5Sget_select_npoints(defined_sid) != 2)
+            TEST_ERROR;
+
+        for (i = 0; i < 8; i++) {
+
+            hsize_t coord[1] = {(hsize_t)i};
+            htri_t  selected;
+
+            if ((selected = H5Sselect_intersect_block(defined_sid, coord, coord)) < 0)
+                TEST_ERROR;
+
+            if ((selected > 0) != (i == 1 || i == 6))
+                TEST_ERROR;
+        }
+
+        if (H5Sclose(defined_sid) < 0)
+            TEST_ERROR;
+
+        defined_sid = H5I_INVALID_HID;
 
         /* Start with empty read descriptors, including safe NULL payload pointers. */
         memset(rbuf, 0, sizeof rbuf);
@@ -3488,6 +3518,8 @@ error:
     {
         if (reclaim_read && tid >= 0 && sid >= 0)
             H5Treclaim(tid, sid, H5P_DEFAULT, rbuf);
+
+        H5Sclose(defined_sid);
         H5Dclose(did);
         H5Pclose(dcpl);
         H5Tclose(tid);
@@ -3580,10 +3612,6 @@ test_struct_chunk_vlen_churn(hid_t fcpl, hid_t fapl, bool filtered)
 
     /* Start a dataset creation property list for layout and filters. */
     if ((dcpl = H5Pcreate(H5P_DATASET_CREATE)) < 0)
-        TEST_ERROR;
-
-    /* Select the structured chunk layout. */
-    if (H5Pset_layout(dcpl, H5D_STRUCT_CHUNK) < 0)
         TEST_ERROR;
 
     /* Set the chunk shape and sparse storage policy. */
@@ -3892,10 +3920,6 @@ test_struct_chunk_vlen_large(hid_t fcpl, hid_t fapl, unsigned chk_type, bool fil
     if ((dcpl = H5Pcreate(H5P_DATASET_CREATE)) < 0)
         TEST_ERROR;
 
-    /* Select the structured chunk layout. */
-    if (H5Pset_layout(dcpl, H5D_STRUCT_CHUNK) < 0)
-        TEST_ERROR;
-
     /* Set the chunk shape and sparse storage policy. */
     if (H5Pset_struct_chunk(dcpl, rank, chunk_dims, H5D_SPARSE_CHUNK) < 0)
         TEST_ERROR;
@@ -4174,10 +4198,6 @@ test_struct_chunk_vlen_compound(hid_t fcpl, hid_t fapl, bool filtered)
 
     /* Start a dataset creation property list for layout and filters. */
     if ((dcpl = H5Pcreate(H5P_DATASET_CREATE)) < 0)
-        TEST_ERROR;
-
-    /* Select the structured chunk layout. */
-    if (H5Pset_layout(dcpl, H5D_STRUCT_CHUNK) < 0)
         TEST_ERROR;
 
     /* Set the chunk shape and sparse storage policy. */
@@ -4477,10 +4497,6 @@ test_struct_chunk_vlen_two_members(hid_t fcpl, hid_t fapl, bool filtered)
     if ((dcpl = H5Pcreate(H5P_DATASET_CREATE)) < 0)
         TEST_ERROR;
 
-    /* Select the structured chunk layout. */
-    if (H5Pset_layout(dcpl, H5D_STRUCT_CHUNK) < 0)
-        TEST_ERROR;
-
     /* Set the chunk shape and sparse storage policy. */
     if (H5Pset_struct_chunk(dcpl, 1, chunk_dims, H5D_SPARSE_CHUNK) < 0)
         TEST_ERROR;
@@ -4775,10 +4791,6 @@ test_struct_chunk_vlen_erase(hid_t fcpl, hid_t fapl, bool filtered)
     if ((dcpl = H5Pcreate(H5P_DATASET_CREATE)) < 0)
         TEST_ERROR;
 
-    /* Select the structured chunk layout. */
-    if (H5Pset_layout(dcpl, H5D_STRUCT_CHUNK) < 0)
-        TEST_ERROR;
-
     /* Set the chunk shape and sparse storage policy. */
     if (H5Pset_struct_chunk(dcpl, 1, chunk_dims, H5D_SPARSE_CHUNK) < 0)
         TEST_ERROR;
@@ -5060,10 +5072,6 @@ test_struct_chunk_vlen_empty_section(hid_t fcpl, hid_t fapl, bool filtered)
     if ((dcpl = H5Pcreate(H5P_DATASET_CREATE)) < 0)
         TEST_ERROR;
 
-    /* Select the structured chunk layout. */
-    if (H5Pset_layout(dcpl, H5D_STRUCT_CHUNK) < 0)
-        TEST_ERROR;
-
     /* Set the chunk shape and sparse storage policy. */
     if (H5Pset_struct_chunk(dcpl, 1, chunk_dims, H5D_SPARSE_CHUNK) < 0)
         TEST_ERROR;
@@ -5303,10 +5311,6 @@ test_struct_chunk_vlen_type_conversion(hid_t fcpl, hid_t fapl, bool filtered)
 
     /* Start a dataset creation property list for layout and filters. */
     if ((dcpl = H5Pcreate(H5P_DATASET_CREATE)) < 0)
-        TEST_ERROR;
-
-    /* Select the structured chunk layout. */
-    if (H5Pset_layout(dcpl, H5D_STRUCT_CHUNK) < 0)
         TEST_ERROR;
 
     /* Set the chunk shape and sparse storage policy. */
@@ -5911,22 +5915,47 @@ test_local_heapset_slot_growth(hid_t fcpl, hid_t fapl)
             slots[i] != i || !indices[i] || heapset->nlive != i + 1 || heapset->nslots != i + 1 ||
             heapset->nalloc < heapset->nslots)
             TEST_ERROR;
-        if (previous_capacity && heapset->nalloc != previous_capacity) {
-            if (heapset->nalloc <= previous_capacity || i + 1 <= previous_capacity)
+
+        /* New heap sets start with one slot; exhausted capacity doubles,
+         * capped at the descriptor-visible slot limit.
+         */
+        if (previous_capacity == 0) {
+            if (heapset->nalloc != 1)
+                TEST_ERROR;
+        }
+        else if (i + 1 <= previous_capacity) {
+            if (heapset->nalloc != previous_capacity)
+                TEST_ERROR;
+        }
+        else {
+            size_t expected_capacity =
+                previous_capacity > H5HG_LOCAL_MAX_HEAP_SLOTS / 2
+                    ? H5HG_LOCAL_MAX_HEAP_SLOTS
+                    : previous_capacity * 2;
+
+            if (heapset->nalloc != expected_capacity)
                 TEST_ERROR;
             grew = true;
         }
+
         previous_capacity = heapset->nalloc;
+
         expected          = sizeof(*heapset) + heapset->nalloc * sizeof(heapset->heaps[0]);
+
         for (j = 0; j < heapset->nslots; j++) {
+
             H5HG_heap_t *member = heapset->heaps[j];
+
             if (!member)
                 TEST_ERROR;
+
             expected += sizeof(*member) + member->size + member->nalloc * sizeof(member->obj[0]);
         }
         if (H5HG__get_local_heapset_alloc_size(heapset, &bytes) < 0 || bytes != expected)
             TEST_ERROR;
-    }
+
+    } /* end for */
+
     if (!grew)
         TEST_ERROR;
 
@@ -5934,67 +5963,98 @@ test_local_heapset_slot_growth(hid_t fcpl, hid_t fapl)
     if (H5HG__encode_local_heapset(f, heapset, &image, &image_len) < 0 || !image || !image_len ||
         NULL == (decoded = H5HG__decode_local_heapset(f, image, image_len)))
         TEST_ERROR;
+
     if (H5HG__free_local_heapset(heapset) < 0)
         TEST_ERROR;
+
     heapset = decoded;
     decoded = NULL;
     image   = H5MM_xfree(image);
 
     if (heapset->nlive != NOBJECTS || heapset->nslots != NOBJECTS)
         TEST_ERROR;
+
     expected = sizeof(*heapset) + heapset->nalloc * sizeof(heapset->heaps[0]);
+
     for (i = 0; i < heapset->nslots; i++) {
         H5HG_heap_t *member = heapset->heaps[i];
         if (!member)
             TEST_ERROR;
         expected += sizeof(*member) + member->size + member->nalloc * sizeof(member->obj[0]);
     }
+
     if (H5HG__get_local_heapset_alloc_size(heapset, &bytes) < 0 || bytes != expected)
         TEST_ERROR;
+
     for (i = 0; i < NOBJECTS; i++) {
+
         bytes = size;
+
         if (H5HG__read_local_heapset(f, heapset, slots[i], indices[i], readback, &bytes) < 0 || bytes != size)
             TEST_ERROR;
-        for (j = 0; j < bytes; j++)
+
+        for (j = 0; j < bytes; j++) {
             if (readback[j] != (uint8_t)(i + 1))
                 TEST_ERROR;
+        }
+
     }
 
     /* Reuse an interior slot without moving its neighbors. */
     if (H5HG__remove_local_heapset(f, heapset, slots[7], indices[7]) < 0)
         TEST_ERROR;
+
     memset(payload, 201, size);
+
     if (H5HG__insert_local_heapset(f, &heapset, size, payload, &slots[7], &indices[7]) < 0 || slots[7] != 7 ||
         heapset->nslots != NOBJECTS)
         TEST_ERROR;
+
     expected = sizeof(*heapset) + heapset->nalloc * sizeof(heapset->heaps[0]);
+
     for (i = 0; i < heapset->nslots; i++) {
         H5HG_heap_t *member = heapset->heaps[i];
         if (!member)
             TEST_ERROR;
         expected += sizeof(*member) + member->size + member->nalloc * sizeof(member->obj[0]);
     }
+
     if (H5HG__get_local_heapset_alloc_size(heapset, &bytes) < 0 || bytes != expected)
         TEST_ERROR;
+
     for (i = 0; i < NOBJECTS; i++) {
+
+        uint8_t expected_byte = (uint8_t)(i == 7 ? 201 : i + 1);
+
         bytes = size;
         if (H5HG__read_local_heapset(f, heapset, slots[i], indices[i], readback, &bytes) < 0 ||
-            bytes != size || readback[0] != (uint8_t)(i == 7 ? 201 : i + 1))
+            bytes != size)
+            TEST_ERROR;
+
+        for (j = 0; j < bytes; j++) {
+            if (readback[j] != expected_byte)
+                TEST_ERROR;
+        }
+
+    }
+
+    for (i = 0; i < NOBJECTS; i++) {
+        if (H5HG__remove_local_heapset(f, heapset, slots[i], indices[i]) < 0)
             TEST_ERROR;
     }
 
-    for (i = 0; i < NOBJECTS; i++)
-        if (H5HG__remove_local_heapset(f, heapset, slots[i], indices[i]) < 0)
-            TEST_ERROR;
     expected = sizeof(*heapset) + heapset->nalloc * sizeof(heapset->heaps[0]);
+
     if (heapset->nlive != 0 || H5HG__get_local_heapset_alloc_size(heapset, &bytes) < 0 || bytes != expected)
         TEST_ERROR;
 
     if (H5HG__free_local_heapset(heapset) < 0)
         TEST_ERROR;
+
     heapset  = NULL;
     payload  = H5MM_xfree(payload);
     readback = H5MM_xfree(readback);
+
     if (H5Fclose(fid) < 0)
         TEST_ERROR;
     PASSED();
@@ -6074,9 +6134,9 @@ test_struct_chunk_vlen_eviction(hid_t fcpl, hid_t base_fapl, bool filtered)
         (file_sel = H5Scopy(sid)) < 0 || (tid = H5Tvlen_create(H5T_NATIVE_INT)) < 0 ||
         (dcpl = H5Pcreate(H5P_DATASET_CREATE)) < 0)
         TEST_ERROR;
-
-    if (H5Pset_layout(dcpl, H5D_STRUCT_CHUNK) < 0 ||
-        H5Pset_struct_chunk(dcpl, 1, chunk_dims, H5D_SPARSE_CHUNK) < 0)
+    
+    /* Set the chunk shape and sparse storage policy. */
+    if (H5Pset_struct_chunk(dcpl, 1, chunk_dims, H5D_SPARSE_CHUNK) < 0)
         TEST_ERROR;
 
     /* Exercise both the unfiltered VL section and its filtered encode/decode
@@ -6784,8 +6844,8 @@ test_struct_chunk_vlen_edges(hid_t fcpl, hid_t fapl, bool filtered)
 
     if ((dcpl = H5Pcreate(H5P_DATASET_CREATE)) < 0)
         TEST_ERROR;
-    if (H5Pset_layout(dcpl, H5D_STRUCT_CHUNK) < 0)
-        TEST_ERROR;
+
+    /* Set the chunk shape and sparse storage policy. */
     if (H5Pset_struct_chunk(dcpl, 1, chunk_dims, H5D_SPARSE_CHUNK) < 0)
         TEST_ERROR;
 
@@ -7444,8 +7504,8 @@ test_struct_chunk_vlen_stress(hid_t fcpl, hid_t fapl, unsigned chk_type, bool fi
         TEST_ERROR;
     if ((dcpl = H5Pcreate(H5P_DATASET_CREATE)) < 0)
         TEST_ERROR;
-    if (H5Pset_layout(dcpl, H5D_STRUCT_CHUNK) < 0)
-        TEST_ERROR;
+
+    /* Set the chunk shape and sparse storage policy. */
     if (H5Pset_struct_chunk(dcpl, rank, chunk_dims, H5D_SPARSE_CHUNK) < 0)
         TEST_ERROR;
 
@@ -7907,6 +7967,12 @@ struct_chunk_vlen_lifecycle_checkpoint(hid_t *fid, hid_t *did, const char *filen
  *              verifier reclaims VL read buffers. This function closes the
  *              identifiers it creates; FCPL and FAPL are borrowed from the
  *              caller and remain open.
+ * 
+ * Coverage:    Also tests dense emulation through the sparse layout.
+ *              Completing population defines every chunk position;
+ *              the verifier checks exact membership and VL contents,
+ *              including after reopening and when all values are empty.
+ *
  *
  * Return:      SUCCEED on success / FAIL on error
  *
@@ -7976,8 +8042,9 @@ test_struct_chunk_vlen_lifecycle(hid_t fcpl, hid_t fapl, unsigned chk_type, bool
         (mem_sid = H5Screate_simple(1, one, NULL)) < 0 || (tid = H5Tvlen_create(H5T_NATIVE_INT)) < 0 ||
         (dcpl = H5Pcreate(H5P_DATASET_CREATE)) < 0)
         TEST_ERROR;
-    if (H5Pset_layout(dcpl, H5D_STRUCT_CHUNK) < 0 ||
-        H5Pset_struct_chunk(dcpl, rank, chunk_dims, H5D_SPARSE_CHUNK) < 0)
+
+    /* Set the chunk shape and sparse storage policy. */
+    if (H5Pset_struct_chunk(dcpl, rank, chunk_dims, H5D_SPARSE_CHUNK) < 0)
         TEST_ERROR;
 
     /* Mandatory filters prevent a filtered case from silently skipping them. */
@@ -8008,6 +8075,11 @@ test_struct_chunk_vlen_lifecycle(hid_t fcpl, hid_t fapl, unsigned chk_type, bool
             if (verify_struct_chunk_vlen_stress(did, tid, sid, rank, dims, defined, lengths, tags) < 0)
                 TEST_ERROR;
         }
+
+        /* Every position is now defined, including zero-length VL values.
+         * This is the emulated dense state; verify it across close/reopen.
+         */
+
         if (struct_chunk_vlen_lifecycle_checkpoint(&fid, &did, filename, fapl, tid, sid, rank, dims,
                                                    expected_idx, defined, lengths, tags, false) < 0)
             TEST_ERROR;
@@ -8157,7 +8229,7 @@ test_struct_chunk_vlen_lifecycle(hid_t fcpl, hid_t fapl, unsigned chk_type, bool
         if (struct_chunk_vlen_lifecycle_checkpoint(&fid, &did, filename, fapl, tid, sid, rank, dims,
                                                    expected_idx, defined, lengths, tags, false) < 0)
             TEST_ERROR;
-    }
+    } /* end for */
 
     /* Finish with nonempty data, not only an empty file. Reverse coordinate
      * order exercises insertion before existing packed records after deletion.
