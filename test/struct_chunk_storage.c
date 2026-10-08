@@ -128,6 +128,8 @@ static herr_t test_struct_chunk_vlen_type_conversion(hid_t fcpl, hid_t fapl, boo
 static herr_t test_struct_chunk_vlen_lifecycle(hid_t fcpl, hid_t fapl, unsigned chk_type, bool filtered);
 static herr_t test_struct_chunk_vlen_stress(hid_t fcpl, hid_t fapl, unsigned chk_type, bool filtered,
                                             size_t iterations, uint64_t seed);
+static herr_t test_struct_chunk_vlen_dense_emulation(hid_t fcpl, hid_t fapl,
+                                                     unsigned chk_type, bool filtered);
 static herr_t test_local_heapset_stable_slots(hid_t fcpl, hid_t fapl);
 static herr_t test_local_heapset_growth(hid_t fcpl, hid_t fapl);
 static herr_t test_local_heapset_slot_growth(hid_t fcpl, hid_t fapl);
@@ -8291,6 +8293,248 @@ error:
     return FAIL;
 } /* end test_struct_chunk_vlen_lifecycle() */
 
+/*-------------------------------------------------------------------------
+ * Function:    test_struct_chunk_vlen_dense_emulation
+ *
+ * Purpose:     Explicitly test dense population in the sparse structured-chunk
+ *              representation. This does not select a dedicated dense layout.
+ *
+ * Procedure:   Write every position, including defined empty VL values.
+ *              Replace the first and last record of every chunk while keeping
+ *              all positions defined. Replace the entire dataset with empty
+ *              values, then restore nonempty values with different payloads.
+ *              After every phase, check the defined count of EACH chunk and
+ *              every coordinate's membership, VL length, and payload. Repeat
+ *              those checks after closing BOTH dataset and file and reopening.
+ *
+ * Dependencies: VL_STRESS_NELMTS (64), verify_struct_chunk_vlen_stress(),
+ *               struct_chunk_vlen_stress_value(), and
+ *               struct_chunk_vlen_lifecycle_write(), already in this file.
+ *-------------------------------------------------------------------------
+ */
+static herr_t
+test_struct_chunk_vlen_dense_emulation(hid_t fcpl, hid_t fapl, unsigned chk_type, bool filtered)
+{
+    char              filename[FILENAME_BUF_SIZE];
+    hid_t             fid     = H5I_INVALID_HID;
+    hid_t             did     = H5I_INVALID_HID;
+    hid_t             sid     = H5I_INVALID_HID;
+    hid_t             op_sid  = H5I_INVALID_HID;
+    hid_t             mem_sid = H5I_INVALID_HID;
+    hid_t             dcpl    = H5I_INVALID_HID;
+    hid_t             tid     = H5I_INVALID_HID;
+    hid_t             defined_sid = H5I_INVALID_HID;
+    H5D_chunk_index_t idx_type;
+    H5D_chunk_index_t expected_idx;
+    hsize_t           dims[2]       = {VL_STRESS_NELMTS, 1};
+    hsize_t           maxdims[2]    = {VL_STRESS_NELMTS, 1};
+    hsize_t           chunk_dims[2] = {8, 1};
+    hsize_t           mem_dims[1]   = {1};
+    hsize_t           start[2];
+    hsize_t           count[2] = {1, 1};
+    hvl_t             wbuf[VL_STRESS_NELMTS];
+    int               payload[VL_STRESS_NELMTS][7];
+    bool              defined[VL_STRESS_NELMTS];
+    size_t            lengths[VL_STRESS_NELMTS];
+    uint64_t          tags[VL_STRESS_NELMTS];
+    const char       *phase_names[] = {"full population", "partial replacement",
+                                      "all defined-empty", "restore nonempty"};
+    unsigned          rank;
+    unsigned          phase = 0;
+    unsigned          checkpoint = 0;
+    unsigned int      level = 6;
+    hsize_t           x, y;
+    size_t            i, j;
+
+    TESTING("structured chunk VL dense emulation and defined membership");
+
+    switch (chk_type) {
+        case CHK_SINGLE:
+            rank = 1;
+            chunk_dims[0] = VL_STRESS_NELMTS;
+            expected_idx = H5D_CHUNK_IDX_SINGLE;
+            break;
+        case CHK_FA:
+            rank = 1;
+            expected_idx = H5D_CHUNK_IDX_FARRAY;
+            break;
+        case CHK_EA:
+            rank = 1;
+            maxdims[0] = H5S_UNLIMITED;
+            expected_idx = H5D_CHUNK_IDX_EARRAY;
+            break;
+        default:
+            rank = 2;
+            dims[0] = dims[1] = 8;
+            maxdims[0] = maxdims[1] = H5S_UNLIMITED;
+            chunk_dims[0] = 2;
+            chunk_dims[1] = 4;
+            expected_idx = H5D_CHUNK_IDX_BT2;
+            break;
+    }
+
+    h5_fixname(FILENAME[6], fapl, filename, sizeof filename);
+    if ((fid = H5Fcreate(filename, H5F_ACC_TRUNC, fcpl, fapl)) < 0)
+        TEST_ERROR;
+    if ((sid = H5Screate_simple((int)rank, dims, maxdims)) < 0)
+        TEST_ERROR;
+    if ((op_sid = H5Scopy(sid)) < 0)
+        TEST_ERROR;
+    if ((mem_sid = H5Screate_simple(1, mem_dims, NULL)) < 0)
+        TEST_ERROR;
+    if ((tid = H5Tvlen_create(H5T_NATIVE_INT)) < 0)
+        TEST_ERROR;
+    if ((dcpl = H5Pcreate(H5P_DATASET_CREATE)) < 0)
+        TEST_ERROR;
+    if (H5Pset_struct_chunk(dcpl, rank, chunk_dims, H5D_SPARSE_CHUNK) < 0)
+        TEST_ERROR;
+    if (filtered) {
+        if (H5Pset_filter2(dcpl, H5_SECTION_SELECTION, H5Z_FILTER_DEFLATE,
+                           H5Z_FLAG_OPTIONAL, 1, &level) < 0)
+            TEST_ERROR;
+        if (H5Pset_filter2(dcpl, H5_SECTION_FIXED, H5Z_FILTER_DEFLATE,
+                           H5Z_FLAG_OPTIONAL, 1, &level) < 0)
+            TEST_ERROR;
+        if (H5Pset_filter2(dcpl, H5_SECTION_VL, H5Z_FILTER_DEFLATE,
+                           H5Z_FLAG_OPTIONAL, 1, &level) < 0)
+            TEST_ERROR;
+    }
+    if ((did = H5Dcreate2(fid, "vlen_dense_emulation", tid, sid,
+                          H5P_DEFAULT, dcpl, H5P_DEFAULT)) < 0)
+        TEST_ERROR;
+
+    for (phase = 0; phase < 4; phase++) {
+        if (phase != 1) {
+            /* Full-dataset writes establish density directly. A zero-length
+             * sequence is still a defined value, not a missing position.
+             */
+            for (i = 0; i < VL_STRESS_NELMTS; i++) {
+                lengths[i] = phase == 0 ? i % 5 : (phase == 2 ? 0 : 1 + i % 7);
+                tags[i] = UINT64_C(1000) + phase * 100 + i;
+                wbuf[i].len = lengths[i];
+                wbuf[i].p = lengths[i] ? payload[i] : NULL;
+                for (j = 0; j < lengths[i]; j++)
+                    payload[i][j] = struct_chunk_vlen_stress_value(tags[i], i, j);
+            }
+            if (H5Dwrite(did, tid, H5S_ALL, H5S_ALL, H5P_DEFAULT, wbuf) < 0)
+                TEST_ERROR;
+            for (i = 0; i < VL_STRESS_NELMTS; i++)
+                defined[i] = true;
+        }
+        else {
+            /* Update both ends of every chunk. The model retains all other
+             * values, so the verifier also checks untouched neighbors.
+             */
+            for (x = 0; x < dims[0]; x += chunk_dims[0])
+                for (y = 0; y < dims[1]; y += chunk_dims[1]) {
+                    size_t first = rank == 1 ? (size_t)x : (size_t)(x * dims[1] + y);
+                    size_t last = rank == 1 ? (size_t)(x + chunk_dims[0] - 1)
+                                           : (size_t)((x + chunk_dims[0] - 1) * dims[1] +
+                                                      y + chunk_dims[1] - 1);
+                    uint64_t tag = UINT64_C(9000) + first;
+
+                    if (struct_chunk_vlen_lifecycle_write(did, tid, op_sid, mem_sid,
+                                                          rank, dims, first, 7, tag) < 0)
+                        TEST_ERROR;
+                    lengths[first] = 7;
+                    tags[first] = tag;
+                    if (struct_chunk_vlen_lifecycle_write(did, tid, op_sid, mem_sid,
+                                                          rank, dims, last, 0, 0) < 0)
+                        TEST_ERROR;
+                    lengths[last] = 0;
+                    tags[last] = 0;
+                }
+        }
+
+        for (checkpoint = 0; checkpoint < 2; checkpoint++) {
+            if (H5D__layout_idx_type_test(did, &idx_type) < 0 || idx_type != expected_idx)
+                TEST_ERROR;
+
+            /* Explicit per-chunk density checks, before any payload read at
+             * this checkpoint. All shapes contain only complete chunks.
+             */
+            for (x = 0; x < dims[0]; x += chunk_dims[0])
+                for (y = 0; y < dims[1]; y += chunk_dims[1]) {
+                    start[0] = x;
+                    start[1] = y;
+                    if (H5Sselect_hyperslab(op_sid, H5S_SELECT_SET, start, NULL,
+                                            count, chunk_dims) < 0)
+                        TEST_ERROR;
+                    if ((defined_sid = H5Dget_defined(did, op_sid, H5P_DEFAULT)) < 0)
+                        TEST_ERROR;
+                    if (H5Sget_select_npoints(defined_sid) !=
+                        (hssize_t)(chunk_dims[0] * chunk_dims[1]))
+                        TEST_ERROR;
+                    if (H5Sclose(defined_sid) < 0)
+                        TEST_ERROR;
+                    defined_sid = H5I_INVALID_HID;
+                }
+
+            /* This helper independently asserts all 64 memberships, all
+             * lengths and payload items, and reclaims the read allocations.
+             */
+            if (verify_struct_chunk_vlen_stress(did, tid, sid, rank, dims,
+                                                defined, lengths, tags) < 0)
+                TEST_ERROR;
+
+            if (checkpoint == 0) {
+                if (H5Dclose(did) < 0)
+                    TEST_ERROR;
+                did = H5I_INVALID_HID;
+                if (H5Fclose(fid) < 0)
+                    TEST_ERROR;
+                fid = H5I_INVALID_HID;
+                if ((fid = H5Fopen(filename, H5F_ACC_RDWR, fapl)) < 0)
+                    TEST_ERROR;
+                if ((did = H5Dopen2(fid, "vlen_dense_emulation", H5P_DEFAULT)) < 0)
+                    TEST_ERROR;
+            }
+        }
+    }
+
+    if (H5Dclose(did) < 0)
+        TEST_ERROR;
+    did = H5I_INVALID_HID;
+    if (H5Pclose(dcpl) < 0)
+        TEST_ERROR;
+    dcpl = H5I_INVALID_HID;
+    if (H5Tclose(tid) < 0)
+        TEST_ERROR;
+    tid = H5I_INVALID_HID;
+    if (H5Sclose(mem_sid) < 0)
+        TEST_ERROR;
+    mem_sid = H5I_INVALID_HID;
+    if (H5Sclose(op_sid) < 0)
+        TEST_ERROR;
+    op_sid = H5I_INVALID_HID;
+    if (H5Sclose(sid) < 0)
+        TEST_ERROR;
+    sid = H5I_INVALID_HID;
+    if (H5Fclose(fid) < 0)
+        TEST_ERROR;
+    fid = H5I_INVALID_HID;
+
+    PASSED();
+    return SUCCEED;
+
+error:
+    fprintf(stderr, "Dense emulation: index case=%u filtered=%u phase=%s checkpoint=%u\n",
+            chk_type, (unsigned)filtered, phase_names[phase < 4 ? phase : 3], checkpoint);
+    H5E_BEGIN_TRY
+    {
+        H5Sclose(defined_sid);
+        H5Dclose(did);
+        H5Pclose(dcpl);
+        H5Tclose(tid);
+        H5Sclose(mem_sid);
+        H5Sclose(op_sid);
+        H5Sclose(sid);
+        H5Fclose(fid);
+    }
+    H5E_END_TRY
+    return FAIL;
+} /* end test_struct_chunk_vlen_dense_emulation() */
+
 #ifdef TBD
 
 /*-------------------------------------------------------------------------
@@ -9320,6 +9564,18 @@ main(void)
         for (use_filter = 0; use_filter < 2; use_filter++) {
             nerrors += (test_struct_chunk_vlen(fcpl, vl_fapl, 0, (bool)use_filter) < 0);
         }
+
+        for (type = CHK_SINGLE; type <= CHK_EA; type++) {
+            for (use_filter = 0; use_filter < 2; use_filter++)
+                 nerrors += (test_struct_chunk_vlen_dense_emulation(
+                             fcpl, vl_fapl, type, (bool)use_filter) < 0);
+        }
+
+        for (use_filter = 0; use_filter < 2; use_filter++) {
+            nerrors += (test_struct_chunk_vlen_dense_emulation(
+                        fcpl, vl_fapl, 0, (bool)use_filter) < 0);
+        }
+ 
 
         /*
          * Repeatedly change VL values to exercise removal, reinsertion,
