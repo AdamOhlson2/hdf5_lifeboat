@@ -1813,6 +1813,21 @@ H5D__struct_chunk_decode(H5D_t *dset, size_t *nbytes /*in,out*/, size_t *alloc_s
             HGOTO_ERROR(H5E_DATASET, H5E_CANTDECODE, FAIL, "unable to decode chunk-local VL heap set");
     }
 
+    /*
+     * Release checksum space and unused filter-buffer capacity before
+     * charging the decoded chunk to SCC. The VL heap set is retained
+     * and its full resident allocation is counted separately below.
+     */
+    {
+        void  *decoded_chunk  = chk;
+        size_t decoded_nbytes = 0;
+
+        if (H5D__struct_chunk_condense(dset, &decoded_nbytes, &decoded_chunk, udata) < 0)
+            HGOTO_ERROR(H5E_DATASET, H5E_CANTGET, FAIL, "unable to condense decoded structured chunk");
+
+        assert(decoded_chunk == chk);
+    }
+
     if (H5D__struct_chunk_get_alloc_size(chk, &resident_alloc_size) < 0)
         HGOTO_ERROR(H5E_DATASET, H5E_CANTGET, FAIL, "unable to determine structured chunk allocation size");
 
