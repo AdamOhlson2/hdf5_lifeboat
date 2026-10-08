@@ -128,8 +128,8 @@ static herr_t test_struct_chunk_vlen_type_conversion(hid_t fcpl, hid_t fapl, boo
 static herr_t test_struct_chunk_vlen_lifecycle(hid_t fcpl, hid_t fapl, unsigned chk_type, bool filtered);
 static herr_t test_struct_chunk_vlen_stress(hid_t fcpl, hid_t fapl, unsigned chk_type, bool filtered,
                                             size_t iterations, uint64_t seed);
-static herr_t test_struct_chunk_vlen_dense_emulation(hid_t fcpl, hid_t fapl,
-                                                     unsigned chk_type, bool filtered);
+static herr_t test_struct_chunk_vlen_dense_emulation(hid_t fcpl, hid_t fapl, unsigned chk_type,
+                                                     bool filtered);
 static herr_t test_local_heapset_stable_slots(hid_t fcpl, hid_t fapl);
 static herr_t test_local_heapset_growth(hid_t fcpl, hid_t fapl);
 static herr_t test_local_heapset_slot_growth(hid_t fcpl, hid_t fapl);
@@ -8316,13 +8316,13 @@ static herr_t
 test_struct_chunk_vlen_dense_emulation(hid_t fcpl, hid_t fapl, unsigned chk_type, bool filtered)
 {
     char              filename[FILENAME_BUF_SIZE];
-    hid_t             fid     = H5I_INVALID_HID;
-    hid_t             did     = H5I_INVALID_HID;
-    hid_t             sid     = H5I_INVALID_HID;
-    hid_t             op_sid  = H5I_INVALID_HID;
-    hid_t             mem_sid = H5I_INVALID_HID;
-    hid_t             dcpl    = H5I_INVALID_HID;
-    hid_t             tid     = H5I_INVALID_HID;
+    hid_t             fid         = H5I_INVALID_HID;
+    hid_t             did         = H5I_INVALID_HID;
+    hid_t             sid         = H5I_INVALID_HID;
+    hid_t             op_sid      = H5I_INVALID_HID;
+    hid_t             mem_sid     = H5I_INVALID_HID;
+    hid_t             dcpl        = H5I_INVALID_HID;
+    hid_t             tid         = H5I_INVALID_HID;
     hid_t             defined_sid = H5I_INVALID_HID;
     H5D_chunk_index_t idx_type;
     H5D_chunk_index_t expected_idx;
@@ -8337,12 +8337,12 @@ test_struct_chunk_vlen_dense_emulation(hid_t fcpl, hid_t fapl, unsigned chk_type
     bool              defined[VL_STRESS_NELMTS];
     size_t            lengths[VL_STRESS_NELMTS];
     uint64_t          tags[VL_STRESS_NELMTS];
-    const char       *phase_names[] = {"full population", "partial replacement",
-                                      "all defined-empty", "restore nonempty"};
+    const char       *phase_names[] = {"full population", "partial replacement", "all defined-empty",
+                                       "restore nonempty"};
     unsigned          rank;
-    unsigned          phase = 0;
+    unsigned          phase      = 0;
     unsigned          checkpoint = 0;
-    unsigned int      level = 6;
+    unsigned int      level      = 6;
     hsize_t           x, y;
     size_t            i, j;
 
@@ -8350,26 +8350,26 @@ test_struct_chunk_vlen_dense_emulation(hid_t fcpl, hid_t fapl, unsigned chk_type
 
     switch (chk_type) {
         case CHK_SINGLE:
-            rank = 1;
+            rank          = 1;
             chunk_dims[0] = VL_STRESS_NELMTS;
-            expected_idx = H5D_CHUNK_IDX_SINGLE;
+            expected_idx  = H5D_CHUNK_IDX_SINGLE;
             break;
         case CHK_FA:
-            rank = 1;
+            rank         = 1;
             expected_idx = H5D_CHUNK_IDX_FARRAY;
             break;
         case CHK_EA:
-            rank = 1;
-            maxdims[0] = H5S_UNLIMITED;
+            rank         = 1;
+            maxdims[0]   = H5S_UNLIMITED;
             expected_idx = H5D_CHUNK_IDX_EARRAY;
             break;
         default:
-            rank = 2;
+            rank    = 2;
             dims[0] = dims[1] = 8;
             maxdims[0] = maxdims[1] = H5S_UNLIMITED;
-            chunk_dims[0] = 2;
-            chunk_dims[1] = 4;
-            expected_idx = H5D_CHUNK_IDX_BT2;
+            chunk_dims[0]           = 2;
+            chunk_dims[1]           = 4;
+            expected_idx            = H5D_CHUNK_IDX_BT2;
             break;
     }
 
@@ -8389,18 +8389,14 @@ test_struct_chunk_vlen_dense_emulation(hid_t fcpl, hid_t fapl, unsigned chk_type
     if (H5Pset_struct_chunk(dcpl, rank, chunk_dims, H5D_SPARSE_CHUNK) < 0)
         TEST_ERROR;
     if (filtered) {
-        if (H5Pset_filter2(dcpl, H5_SECTION_SELECTION, H5Z_FILTER_DEFLATE,
-                           H5Z_FLAG_OPTIONAL, 1, &level) < 0)
+        if (H5Pset_filter2(dcpl, H5_SECTION_SELECTION, H5Z_FILTER_DEFLATE, H5Z_FLAG_OPTIONAL, 1, &level) < 0)
             TEST_ERROR;
-        if (H5Pset_filter2(dcpl, H5_SECTION_FIXED, H5Z_FILTER_DEFLATE,
-                           H5Z_FLAG_OPTIONAL, 1, &level) < 0)
+        if (H5Pset_filter2(dcpl, H5_SECTION_FIXED, H5Z_FILTER_DEFLATE, H5Z_FLAG_OPTIONAL, 1, &level) < 0)
             TEST_ERROR;
-        if (H5Pset_filter2(dcpl, H5_SECTION_VL, H5Z_FILTER_DEFLATE,
-                           H5Z_FLAG_OPTIONAL, 1, &level) < 0)
+        if (H5Pset_filter2(dcpl, H5_SECTION_VL, H5Z_FILTER_DEFLATE, H5Z_FLAG_OPTIONAL, 1, &level) < 0)
             TEST_ERROR;
     }
-    if ((did = H5Dcreate2(fid, "vlen_dense_emulation", tid, sid,
-                          H5P_DEFAULT, dcpl, H5P_DEFAULT)) < 0)
+    if ((did = H5Dcreate2(fid, "vlen_dense_emulation", tid, sid, H5P_DEFAULT, dcpl, H5P_DEFAULT)) < 0)
         TEST_ERROR;
 
     for (phase = 0; phase < 4; phase++) {
@@ -8409,10 +8405,10 @@ test_struct_chunk_vlen_dense_emulation(hid_t fcpl, hid_t fapl, unsigned chk_type
              * sequence is still a defined value, not a missing position.
              */
             for (i = 0; i < VL_STRESS_NELMTS; i++) {
-                lengths[i] = phase == 0 ? i % 5 : (phase == 2 ? 0 : 1 + i % 7);
-                tags[i] = UINT64_C(1000) + phase * 100 + i;
+                lengths[i]  = phase == 0 ? i % 5 : (phase == 2 ? 0 : 1 + i % 7);
+                tags[i]     = UINT64_C(1000) + phase * 100 + i;
                 wbuf[i].len = lengths[i];
-                wbuf[i].p = lengths[i] ? payload[i] : NULL;
+                wbuf[i].p   = lengths[i] ? payload[i] : NULL;
                 for (j = 0; j < lengths[i]; j++)
                     payload[i][j] = struct_chunk_vlen_stress_value(tags[i], i, j);
             }
@@ -8427,22 +8423,22 @@ test_struct_chunk_vlen_dense_emulation(hid_t fcpl, hid_t fapl, unsigned chk_type
              */
             for (x = 0; x < dims[0]; x += chunk_dims[0])
                 for (y = 0; y < dims[1]; y += chunk_dims[1]) {
-                    size_t first = rank == 1 ? (size_t)x : (size_t)(x * dims[1] + y);
-                    size_t last = rank == 1 ? (size_t)(x + chunk_dims[0] - 1)
-                                           : (size_t)((x + chunk_dims[0] - 1) * dims[1] +
-                                                      y + chunk_dims[1] - 1);
-                    uint64_t tag = UINT64_C(9000) + first;
+                    size_t   first = rank == 1 ? (size_t)x : (size_t)(x * dims[1] + y);
+                    size_t   last  = rank == 1
+                                         ? (size_t)(x + chunk_dims[0] - 1)
+                                         : (size_t)((x + chunk_dims[0] - 1) * dims[1] + y + chunk_dims[1] - 1);
+                    uint64_t tag   = UINT64_C(9000) + first;
 
-                    if (struct_chunk_vlen_lifecycle_write(did, tid, op_sid, mem_sid,
-                                                          rank, dims, first, 7, tag) < 0)
+                    if (struct_chunk_vlen_lifecycle_write(did, tid, op_sid, mem_sid, rank, dims, first, 7,
+                                                          tag) < 0)
                         TEST_ERROR;
                     lengths[first] = 7;
-                    tags[first] = tag;
-                    if (struct_chunk_vlen_lifecycle_write(did, tid, op_sid, mem_sid,
-                                                          rank, dims, last, 0, 0) < 0)
+                    tags[first]    = tag;
+                    if (struct_chunk_vlen_lifecycle_write(did, tid, op_sid, mem_sid, rank, dims, last, 0, 0) <
+                        0)
                         TEST_ERROR;
                     lengths[last] = 0;
-                    tags[last] = 0;
+                    tags[last]    = 0;
                 }
         }
 
@@ -8457,13 +8453,11 @@ test_struct_chunk_vlen_dense_emulation(hid_t fcpl, hid_t fapl, unsigned chk_type
                 for (y = 0; y < dims[1]; y += chunk_dims[1]) {
                     start[0] = x;
                     start[1] = y;
-                    if (H5Sselect_hyperslab(op_sid, H5S_SELECT_SET, start, NULL,
-                                            count, chunk_dims) < 0)
+                    if (H5Sselect_hyperslab(op_sid, H5S_SELECT_SET, start, NULL, count, chunk_dims) < 0)
                         TEST_ERROR;
                     if ((defined_sid = H5Dget_defined(did, op_sid, H5P_DEFAULT)) < 0)
                         TEST_ERROR;
-                    if (H5Sget_select_npoints(defined_sid) !=
-                        (hssize_t)(chunk_dims[0] * chunk_dims[1]))
+                    if (H5Sget_select_npoints(defined_sid) != (hssize_t)(chunk_dims[0] * chunk_dims[1]))
                         TEST_ERROR;
                     if (H5Sclose(defined_sid) < 0)
                         TEST_ERROR;
@@ -8473,8 +8467,7 @@ test_struct_chunk_vlen_dense_emulation(hid_t fcpl, hid_t fapl, unsigned chk_type
             /* This helper independently asserts all 64 memberships, all
              * lengths and payload items, and reclaims the read allocations.
              */
-            if (verify_struct_chunk_vlen_stress(did, tid, sid, rank, dims,
-                                                defined, lengths, tags) < 0)
+            if (verify_struct_chunk_vlen_stress(did, tid, sid, rank, dims, defined, lengths, tags) < 0)
                 TEST_ERROR;
 
             if (checkpoint == 0) {
@@ -8518,8 +8511,8 @@ test_struct_chunk_vlen_dense_emulation(hid_t fcpl, hid_t fapl, unsigned chk_type
     return SUCCEED;
 
 error:
-    fprintf(stderr, "Dense emulation: index case=%u filtered=%u phase=%s checkpoint=%u\n",
-            chk_type, (unsigned)filtered, phase_names[phase < 4 ? phase : 3], checkpoint);
+    fprintf(stderr, "Dense emulation: index case=%u filtered=%u phase=%s checkpoint=%u\n", chk_type,
+            (unsigned)filtered, phase_names[phase < 4 ? phase : 3], checkpoint);
     H5E_BEGIN_TRY
     {
         H5Sclose(defined_sid);
@@ -9567,15 +9560,13 @@ main(void)
 
         for (type = CHK_SINGLE; type <= CHK_EA; type++) {
             for (use_filter = 0; use_filter < 2; use_filter++)
-                 nerrors += (test_struct_chunk_vlen_dense_emulation(
-                             fcpl, vl_fapl, type, (bool)use_filter) < 0);
+                nerrors +=
+                    (test_struct_chunk_vlen_dense_emulation(fcpl, vl_fapl, type, (bool)use_filter) < 0);
         }
 
         for (use_filter = 0; use_filter < 2; use_filter++) {
-            nerrors += (test_struct_chunk_vlen_dense_emulation(
-                        fcpl, vl_fapl, 0, (bool)use_filter) < 0);
+            nerrors += (test_struct_chunk_vlen_dense_emulation(fcpl, vl_fapl, 0, (bool)use_filter) < 0);
         }
- 
 
         /*
          * Repeatedly change VL values to exercise removal, reinsertion,
